@@ -80,7 +80,7 @@ pub fn try_load() -> Result<AuthData, String> {
 pub fn save(data: &AuthData) -> Result<(), String> {
     let json = serde_json::to_string_pretty(data)
         .map_err(|e| format!("failed to serialize auth data: {e}"))?;
-    std::fs::write(&auth_path(), &json)
+    std::fs::write(auth_path(), &json)
         .map_err(|e| format!("failed to write {}: {e}", auth_path().display()))
 }
 
@@ -104,14 +104,16 @@ pub fn decrypt_accounts(payload: &AccountsPayload, key: &[u8; 32]) -> Result<Vec
             .map_err(|e| format!("failed to parse accounts: {e}"));
     }
 
-    let nonce_hex = payload.nonce_hex.as_deref()
+    let nonce_hex = payload
+        .nonce_hex
+        .as_deref()
         .ok_or_else(|| "missing nonce_hex in encrypted accounts".to_string())?;
-    let ct_hex = payload.ciphertext_hex.as_deref()
+    let ct_hex = payload
+        .ciphertext_hex
+        .as_deref()
         .ok_or_else(|| "missing ciphertext_hex in encrypted accounts".to_string())?;
-    let mut nonce = hex::decode(nonce_hex)
-        .map_err(|e| format!("invalid nonce hex: {e}"))?;
-    let mut ciphertext = hex::decode(ct_hex)
-        .map_err(|e| format!("invalid ciphertext hex: {e}"))?;
+    let mut nonce = hex::decode(nonce_hex).map_err(|e| format!("invalid nonce hex: {e}"))?;
+    let mut ciphertext = hex::decode(ct_hex).map_err(|e| format!("invalid ciphertext hex: {e}"))?;
     let mut plaintext = crypto::decrypt(&ciphertext, &nonce, key)?;
     let accounts: Vec<Account> = serde_json::from_str(&plaintext)
         .map_err(|e| format!("failed to parse decrypted accounts: {e}"))?;
@@ -125,10 +127,7 @@ pub fn decrypt_accounts(payload: &AccountsPayload, key: &[u8; 32]) -> Result<Vec
 /// Load accounts from AuthData, handling both encrypted and plaintext.
 ///
 /// Caller is responsible for zeroizing the returned Vec<Account> after use.
-pub fn load_accounts(
-    data: &AuthData,
-    key: Option<[u8; 32]>,
-) -> Result<Vec<Account>, String> {
+pub fn load_accounts(data: &AuthData, key: Option<[u8; 32]>) -> Result<Vec<Account>, String> {
     if data.accounts.encrypted {
         let k = key.ok_or_else(|| "app is locked".to_string())?;
         decrypt_accounts(&data.accounts, &k)

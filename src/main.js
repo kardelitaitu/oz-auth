@@ -135,7 +135,6 @@ function stopAutoLock() {
   }
 }
 
-// Track all user activity
 ["mousemove", "keydown", "mousedown", "wheel", "touchstart", "contextmenu"].forEach((evt) => {
   document.addEventListener(evt, resetActivity, { passive: true });
 });
@@ -151,6 +150,75 @@ async function loadAccounts(query = "") {
   }
 }
 
+// ── Drag & drop reorder ────────────────────────────────────
+let dragSrcId = null;
+
+async function reorderAccounts(srcId, targetId) {
+  const srcIdx = accounts.findIndex((a) => a.id === srcId);
+  const tgtIdx = accounts.findIndex((a) => a.id === targetId);
+  if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) return;
+
+  // Relocate the dragged item
+  const [moved] = accounts.splice(srcIdx, 1);
+  accounts.splice(tgtIdx, 0, moved);
+
+  // Batch-update sort_order for all accounts
+  const updates = accounts.map((a, i) =>
+    invoke("update_account", { accountId: a.id, sortOrder: i, issuer: null, label: null })
+  );
+  try {
+    await Promise.all(updates);
+    toast("Reordered");
+  } catch (e) {
+    toast("Reorder failed — reloading", true);
+    await loadAccounts();
+    return;
+  }
+
+  // Rebuild DOM to reflect new order, then refresh codes
+  renderAccounts();
+  refreshCodes();
+}
+
+function handleDragStart(e) {
+  dragSrcId = this.dataset.id;
+  this.classList.add("dragging");
+  e.dataTransfer.effectAllowed = "move";
+  e.dataTransfer.setData("text/plain", dragSrcId);
+}
+
+function handleDragEnd() {
+  this.classList.remove("dragging");
+  // Remove all drag-over highlights
+  accountList.querySelectorAll(".drag-over").forEach((c) => c.classList.remove("drag-over"));
+  dragSrcId = null;
+}
+
+function handleDragOver(e) {
+  e.preventDefault();
+  e.dataTransfer.dropEffect = "move";
+  const card = e.target.closest(".account-card");
+  if (card && card.dataset.id !== dragSrcId) {
+    card.classList.add("drag-over");
+  }
+}
+
+function handleDragLeave(e) {
+  const card = e.target.closest(".account-card");
+  if (card) card.classList.remove("drag-over");
+}
+
+function handleDrop(e) {
+  e.preventDefault();
+  const card = e.target.closest(".account-card");
+  if (!card) return;
+  card.classList.remove("drag-over");
+  const targetId = card.dataset.id;
+  if (dragSrcId && targetId && dragSrcId !== targetId) {
+    reorderAccounts(dragSrcId, targetId);
+  }
+}
+
 // ── Render ─────────────────────────────────────────────────
 function renderAccounts() {
   accountList.innerHTML = "";
@@ -162,27 +230,34 @@ function renderAccounts() {
     const card = document.createElement("div");
     card.className = "account-card";
     card.dataset.id = a.id;
+    card.draggable = true;
     card.innerHTML = `
       <div class="card-header">
         <span class="card-issuer">${escapeHtml(a.issuer)}</span>
-        <div class="card-header-buttons">
-          <button class="card-edit" title="Edit" data-id="${a.id}">✎</button>
-          <button class="card-delete" title="Delete">×</button>
+        <div class="card-header-buttons" draggable="false">
+          <button class="card-edit" title="Edit" data-id="${a.id}" draggable="false">✎</button>
+          <button class="card-delete" title="Delete" draggable="false">×</button>
         </div>
       </div>
       <div class="card-label">${escapeHtml(a.label)}</div>
-      <div class="card-code" data-id="${a.id}">------</div>
+      <div class="card-code" data-id="${a.id}" draggable="false">------</div>
       <div class="card-bar"><div class="card-bar-fill" data-id="${a.id}"></div></div>
       <div class="card-timer" data-id="${a.id}">--s</div>
     `;
-    // Copy code on click
+    // Drag & drop
+    card.addEventListener("dragstart", handleDragStart);
+    card.addEventListener("dragend", handleDragEnd);
+    card.addEventListener("dragover", handleDragOver);
+    card.addEventListener("dragleave", handleDragLeave);
+    card.addEventListener("drop", handleDrop);
+    // Copy code
     card.querySelector(".card-code").addEventListener("click", () => copyCode(a.id));
-    // Edit button
+    // Edit
     card.querySelector(".card-edit").addEventListener("click", (e) => {
       e.stopPropagation();
       openEditDialog(a.id);
     });
-    // Delete button
+    // Delete
     card.querySelector(".card-delete").addEventListener("click", (e) => {
       e.stopPropagation();
       deleteAccount(a.id);
@@ -205,7 +280,6 @@ function escapeHtml(s) {
 // ── Context menu ───────────────────────────────────────────
 function showContextMenu(x, y, accountId) {
   contextAccountId = accountId;
-  // Show first so we can measure
   contextMenu.classList.remove("hidden");
   const rect = contextMenu.getBoundingClientRect();
   const clampedX = Math.min(x, window.innerWidth - rect.width - 4);
@@ -387,7 +461,6 @@ dialogSubmit.addEventListener("click", async () => {
   const secret = dialogSecret.value.trim();
 
   if (editId) {
-    // Edit mode — only require issuer + label; secret is optional
     if (!issuer || !label) {
       toast("Issuer and label are required", true);
       return;
@@ -408,7 +481,6 @@ dialogSubmit.addEventListener("click", async () => {
       toast(typeof e === "string" ? e : "Failed to update account", true);
     }
   } else {
-    // Add mode — all fields required
     if (!issuer || !label || !secret) {
       toast("All fields required", true);
       return;
@@ -439,7 +511,7 @@ dialogScan.addEventListener("click", async () => {
     await startCamera(async (uri) => {
       qrOverlay.classList.add("hidden");
       try {
-        const account = await invoke("add_account_from_uri", { otpauthUri: uri });
+        await invoke("add_account_from_uri", { otpauthUri: uri });
         toast("Account added from QR");
         dialog.classList.add("hidden");
         await loadAccounts();
@@ -470,7 +542,7 @@ document.addEventListener("paste", async (e) => {
         const uri = await scanImage(item.getAsFile());
         qrOverlay.classList.add("hidden");
         stopCamera();
-        const account = await invoke("add_account_from_uri", { otpauthUri: uri });
+        await invoke("add_account_from_uri", { otpauthUri: uri });
         toast("Account added from QR");
         dialog.classList.add("hidden");
         await loadAccounts();
@@ -558,7 +630,6 @@ btnSettings.addEventListener("click", async () => {
     settingsBody.innerHTML = html;
     settingsOverlay.classList.remove("hidden");
 
-    // Pin the event handlers
     const pinError = document.getElementById("pin-error");
 
     if (hasPin) {
@@ -624,8 +695,6 @@ btnSettings.addEventListener("click", async () => {
         }
       });
     }
-
-    // Backup — manual instructions shown in the HTML, no buttons needed
   } catch (e) {
     toast("Failed to load settings", true);
   }

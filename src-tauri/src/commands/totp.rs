@@ -196,7 +196,10 @@ mod tests {
 
         for (time, expected) in vectors {
             let code = totp.generate(*time);
-            assert_eq!(&code, expected, "6-digit SHA-1 code mismatch at time {time}");
+            assert_eq!(
+                &code, expected,
+                "6-digit SHA-1 code mismatch at time {time}"
+            );
         }
     }
 }

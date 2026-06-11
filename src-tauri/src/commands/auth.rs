@@ -47,12 +47,12 @@ pub fn unlock(pin: String, state: State<'_, AppState>) -> Result<bool, String> {
         return Err("PIN is not set".to_string());
     }
 
-    let mut salt = hex::decode(&data.config.password_salt)
-        .map_err(|e| format!("invalid salt: {e}"))?;
+    let mut salt =
+        hex::decode(&data.config.password_salt).map_err(|e| format!("invalid salt: {e}"))?;
     let mut key = crate::crypto::derive_key(&pin, &salt)?;
 
     // Try to decrypt — if it fails, wrong PIN
-    let result = match decrypt_accounts(&data.accounts, &key) {
+    match decrypt_accounts(&data.accounts, &key) {
         Ok(mut accounts) => {
             // Zeroize decrypted accounts — we only needed them for validation
             for a in &mut accounts {
@@ -76,9 +76,7 @@ pub fn unlock(pin: String, state: State<'_, AppState>) -> Result<bool, String> {
                 Err(e)
             }
         }
-    };
-
-    result
+    }
 }
 
 #[tauri::command]
@@ -113,12 +111,12 @@ pub fn change_pin(
         return Err("PIN is not set".to_string());
     }
 
-    let old_salt = hex::decode(&data.config.password_salt)
-        .map_err(|e| format!("invalid salt: {e}"))?;
+    let old_salt =
+        hex::decode(&data.config.password_salt).map_err(|e| format!("invalid salt: {e}"))?;
     let mut old_key = crate::crypto::derive_key(&old_pin, &old_salt)?;
 
-    let mut accounts = decrypt_accounts(&data.accounts, &old_key)
-        .map_err(|_| "wrong current PIN".to_string())?;
+    let mut accounts =
+        decrypt_accounts(&data.accounts, &old_key).map_err(|_| "wrong current PIN".to_string())?;
 
     let new_salt = crate::crypto::generate_salt();
     let mut new_key = crate::crypto::derive_key(&new_pin, &new_salt)?;
@@ -144,22 +142,19 @@ pub fn change_pin(
 #[tauri::command]
 pub fn export_backup(path: String) -> Result<(), String> {
     let src = crate::paths::auth_path();
-    std::fs::copy(&src, &path)
-        .map_err(|e| format!("failed to export backup: {e}"))?;
+    std::fs::copy(&src, &path).map_err(|e| format!("failed to export backup: {e}"))?;
     crate::diagnostics::event("backup", &format!("exported to {path}"));
     Ok(())
 }
 
 #[tauri::command]
 pub fn import_backup(path: String, state: State<'_, AppState>) -> Result<(), String> {
-    let raw = std::fs::read_to_string(&path)
-        .map_err(|e| format!("failed to read backup: {e}"))?;
-    let _backup: crate::storage::auth_file::AuthData = serde_json::from_str(&raw)
-        .map_err(|e| format!("invalid backup file: {e}"))?;
+    let raw = std::fs::read_to_string(&path).map_err(|e| format!("failed to read backup: {e}"))?;
+    let _backup: crate::storage::auth_file::AuthData =
+        serde_json::from_str(&raw).map_err(|e| format!("invalid backup file: {e}"))?;
 
     let dest = crate::paths::auth_path();
-    std::fs::copy(&path, &dest)
-        .map_err(|e| format!("failed to import backup: {e}"))?;
+    std::fs::copy(&path, &dest).map_err(|e| format!("failed to import backup: {e}"))?;
     state.clear_key()?;
     crate::diagnostics::event("backup", &format!("imported from {path}"));
 
