@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "tauri": "node build.mjs && cargo tauri build",
     "preview": "vite preview"
   },
   "dependencies": {
