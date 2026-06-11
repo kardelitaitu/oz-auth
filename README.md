@@ -57,11 +57,17 @@ cargo tauri dev
 ### Production Build
 
 ```bash
-# Build a standalone .exe
-cargo tauri build
+# One command: build frontend then package .exe
+npm run tauri
+
+# Or manually in two steps:
+npm run build              # Step 1: Build frontend with Vite
+cargo tauri build          # Step 2: Package .exe (requires pre-built dist/)
 ```
 
 The output is in `src-tauri/target/release/`. Copy `oz-auth.exe` anywhere — it's fully portable.
+
+> **Note:** `beforeBuildCommand` is intentionally omitted from `tauri.conf.json` to avoid a Vite v6 subprocess exit-code issue on Windows. The `npm run tauri` script handles both steps.
 
 ---
 
@@ -185,9 +191,14 @@ tauri-authenticator/
 ├── package.json                # Frontend dependencies
 ├── vite.config.js              # Vite config
 ├── src/                        # Frontend (WebView)
-│   ├── main.js                 # App init, IPC, all UI logic
-│   ├── js/
-│   │   └── qr-scanner.js       # Camera + image paste QR scanning
+│   ├── main.js                 # Orchestrator — imports all modules
+│   └── js/
+│       ├── totp.js             # TOTP format, countdown, bar updates
+│       ├── accounts.js         # Account cards, add/edit dialog
+│       ├── clipboard.js        # Copy-to-clipboard with auto-clear
+│       ├── lock.js             # Lock overlay, PIN entry, unlock
+│       ├── settings.js         # Settings dialog (PIN, backup, clipboard)
+│       └── dragdrop.js         # Drag-and-drop account reordering
 │   └── styles/
 │       ├── main.css            # Global styles, titlebar, cards
 │       └── themes.css          # Dark/light theme variables
@@ -224,18 +235,20 @@ tauri-authenticator/
 
 ```bash
 # Rust checks
-cargo check           # Type-check only
-cargo test            # Run tests (23 tests)
-cargo clippy -- -D warnings   # Lint with strict mode
-cargo fmt --check     # Verify formatting
+cargo check                    # Type-check only
+cargo test                     # Run tests (23 tests)
+cargo clippy -- -D warnings    # Lint with strict mode
+cargo fmt --check              # Verify formatting
 
 # Frontend
-npm run dev           # Start Vite dev server (port 1420)
-npm run build         # Production build
+npm run dev                    # Start Vite dev server (port 1420)
+npm run build                  # Production frontend build
 
 # Full app
-cargo tauri dev       # Dev mode (frontend + backend with HMR)
-cargo tauri build     # Production .exe
+cargo tauri dev                # Dev mode (frontend + backend with HMR)
+npm run tauri                  # Build frontend then package .exe
+# or manually:
+npm run build && cargo tauri build
 ```
 
 ---
