@@ -204,6 +204,47 @@ mod tests {
         cleanup_auth_file();
         });
     }
+
+    // ── load_config edge cases ───────────────────────────────
+
+    #[test]
+    fn test_load_config_corrupted_auth_file_returns_error() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            std::fs::write(crate::paths::auth_path(), "{{not valid json at all![[[").unwrap();
+
+            // load_config calls try_load() which fails on parse error
+            let result = load_config();
+            assert!(result.is_err(), "load_config must fail on corrupted .auth file");
+            assert!(result.unwrap_err().contains("parse"), "error should mention parse failure");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_load_config_fresh_returns_defaults() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            // No .auth file → try_load returns fresh() → config is default
+            let cfg = load_config().unwrap();
+            let default = crate::config::Config::default();
+            assert_eq!(cfg.theme, default.theme);
+            assert!(!cfg.password_protected);
+            assert_eq!(cfg.always_on_top, default.always_on_top);
+            cleanup_auth_file();
+        });
+    }
+
+    // ── get_app_name ─────────────────────────────────────────
+
+    #[test]
+    fn test_get_app_name_returns_non_empty() {
+        let name = get_app_name();
+        assert!(!name.is_empty(), "get_app_name must return non-empty string");
+    }
+
+    // get_app_version takes tauri::AppHandle — cannot be called in unit tests.
+    // It is compilation-verified via the invoke_handler registration in run().
 }
 
 // ── App entry ────────────────────────────────────────────────

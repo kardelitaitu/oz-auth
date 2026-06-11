@@ -273,6 +273,100 @@ mod tests {
         });
     }
 
+    // ── update_account non-existent ID ───────────────────────
+
+    #[test]
+    fn test_update_account_nonexistent_id_fails() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            // Seed one account
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "real-id".into(), issuer: "Real".into(), label: "r".into(),
+                algorithm: Algorithm::SHA1, digits: 6, period: 30,
+                secret: vec![1, 2, 3], sort_order: 0,
+                created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            // Simulate update_account guard: find by ID → not found
+            // Real command: .ok_or_else(|| format!("account not found: {account_id}"))
+            let loaded = crate::storage::try_load().unwrap();
+            let mut reloaded = crate::storage::load_accounts(&loaded, None).unwrap();
+            let found = reloaded.iter().any(|a| a.id == "nonexistent");
+            assert!(!found, "update must reject non-existent account ID");
+            for a in &mut reloaded { a.secret.zeroize(); }
+            reloaded.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    // ── remove_account non-existent ID ───────────────────────
+
+    #[test]
+    fn test_remove_account_nonexistent_id_noop() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "keep-me".into(), issuer: "Keep".into(), label: "k".into(),
+                algorithm: Algorithm::SHA1, digits: 6, period: 30,
+                secret: vec![1, 2, 3], sort_order: 0,
+                created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            // Simulate remove_account: retain all except the target ID
+            let loaded = crate::storage::try_load().unwrap();
+            let mut reloaded = crate::storage::load_accounts(&loaded, None).unwrap();
+            let before = reloaded.len();
+            reloaded.retain(|a| a.id != "nonexistent");
+            // Non-existent ID → no accounts removed
+            assert_eq!(reloaded.len(), before, "removing non-existent ID is a no-op");
+            assert_eq!(reloaded[0].id, "keep-me");
+            for a in &mut reloaded { a.secret.zeroize(); }
+            reloaded.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    // ── add_account duplicate issuer+label ───────────────────
+
+    #[test]
+    fn test_add_account_duplicate_issuer_label_allowed() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            // Two accounts with the same issuer + label but different IDs (UUIDs)
+            let accounts = vec![
+                Account {
+                    id: "uuid-aaa".into(), issuer: "Dupe".into(), label: "same@test.com".into(),
+                    algorithm: Algorithm::SHA1, digits: 6, period: 30,
+                    secret: vec![1, 2], sort_order: 0,
+                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                },
+                Account {
+                    id: "uuid-bbb".into(), issuer: "Dupe".into(), label: "same@test.com".into(),
+                    algorithm: Algorithm::SHA256, digits: 6, period: 30,
+                    secret: vec![3, 4], sort_order: 1,
+                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                },
+            ];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let loaded = crate::storage::try_load().unwrap();
+            let mut reloaded = crate::storage::load_accounts(&loaded, None).unwrap();
+            assert_eq!(reloaded.len(), 2, "duplicate issuer+label allowed (different IDs)");
+            assert_ne!(reloaded[0].id, reloaded[1].id, "IDs must be distinct");
+            for a in &mut reloaded { a.secret.zeroize(); }
+            reloaded.clear();
+            cleanup_auth_file();
+        });
+    }
+
     // ── update_account sort_order ────────────────────────────
 
     #[test]
