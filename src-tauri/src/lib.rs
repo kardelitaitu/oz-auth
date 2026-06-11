@@ -106,6 +106,11 @@ fn get_app_name() -> String {
 }
 
 #[tauri::command]
+fn get_app_version(app: tauri::AppHandle) -> String {
+    app.package_info().version.to_string()
+}
+
+#[tauri::command]
 fn load_config() -> Result<crate::config::Config, String> {
     Ok(crate::storage::try_load()?.config)
 }
@@ -173,6 +178,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             get_app_name,
+            get_app_version,
             load_config,
             save_config,
             update_tray_icon,

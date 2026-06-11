@@ -1,4 +1,4 @@
-//! Settings dialog: PIN set/change, Lock Now, backup instructions.
+//! Settings dialog: PIN set/change, Lock Now, backup instructions, About.
 
 let cancelHandler = null;
 
@@ -15,6 +15,8 @@ export function openSettings(config) {
     onClipboardClearSecondsChanged,
     lockTimeoutMinutes,
     clipboardClearSeconds,
+    appName,
+    appVersion,
     settingsOverlay,
     settingsTitle,
     settingsBody,
@@ -79,6 +81,21 @@ export function openSettings(config) {
         <input type="number" id="clipboard-clear" value="${clipboardClearSeconds}" min="5" max="300" step="5" style="width:80px;margin-top:4px;" />
         <button class="settings-btn primary" id="clipboard-save-btn" style="margin-top:4px;">Save</button>
         <div class="settings-error hidden" id="clipboard-error"></div>
+      </div>
+    `;
+
+    html += `
+      <div class="settings-section settings-about">
+        <div class="about-icon">
+          <img src="/icon.png" alt="oz-auth icon" width="64" height="64" />
+        </div>
+        <div class="about-name">${appName}</div>
+        <div class="about-version">v${appVersion}</div>
+        <div class="about-credits">
+          <p>A secure, offline TOTP authenticator</p>
+          <p>Built with <strong>Tauri v2</strong> + <strong>Rust</strong></p>
+          <p class="about-copyright">&copy; ${new Date().getFullYear()} ${appName}</p>
+        </div>
       </div>
     `;
 
