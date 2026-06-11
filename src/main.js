@@ -47,6 +47,8 @@ const secondsRemaining = {};
 let lockTimeoutMinutes = 5;
 let clipboardClearSeconds = 30;
 let passwordProtected = false;
+let appName = "oz-auth";
+let appVersion = "0.1.0";
 
 // ── Tray icon update helper ────────────────────────────────
 function updateTrayIcon(pct) {
@@ -333,6 +335,8 @@ btnSettings.addEventListener("click", () => {
     },
     lockTimeoutMinutes,
     clipboardClearSeconds,
+    appName,
+    appVersion,
     settingsOverlay,
     settingsTitle,
     settingsBody,
@@ -431,6 +435,13 @@ document.addEventListener("keydown", async (e) => {
     const name = await invoke("get_app_name");
     titleText.textContent = name;
     document.title = name;
+    appName = name;
+
+    try {
+      appVersion = await invoke("get_app_version");
+    } catch (_) {
+      appVersion = "0.1.0";
+    }
 
     const cfg = await invoke("load_config");
     btnPin.classList.toggle("active", cfg.always_on_top);

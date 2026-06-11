@@ -745,6 +745,52 @@ body.theme-dark, body:not(.theme-light) {
   align-items: center;
 }
 
+/* === About section (in Settings) === */
+.settings-about {
+  text-align: center;
+  padding-top: 16px !important;
+  border-top: 1px solid var(--card-border);
+}
+
+.about-icon {
+  margin-bottom: 8px;
+}
+
+.about-icon img {
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+}
+
+.about-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 2px;
+}
+
+.about-version {
+  font-size: 12px;
+  color: var(--code-color);
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  margin-bottom: 10px;
+}
+
+.about-credits {
+  font-size: 11px;
+  color: var(--btn-color);
+  line-height: 1.6;
+}
+
+.about-credits strong {
+  color: var(--text);
+}
+
+.about-copyright {
+  margin-top: 4px;
+  font-size: 10px;
+  opacity: 0.6;
+}
+
 /* === Toast === */
 #toast-bar {
   position: fixed;
