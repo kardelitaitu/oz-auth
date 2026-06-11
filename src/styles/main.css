@@ -1,0 +1,482 @@
+/* === Reset & base === */
+*, *::before, *::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+}
+
+body.theme-dark, body:not(.theme-light) {
+  --bg: #1e1e1e;
+  --text: #d4d4d4;
+  --titlebar-bg: #1e1e1e;
+  --btn-color: #b3b3b3;
+  --btn-hover-bg: rgba(255, 255, 255, 0.08);
+  --btn-hover-text: #fff;
+  --btn-active-bg: rgba(255, 255, 255, 0.12);
+  --pin-active: #5dade2;
+  --title-text: rgba(255, 255, 255, 0.8);
+  --title-sep: rgba(255, 255, 255, 0.06);
+  --card-bg: #2a2a2a;
+  --card-border: #3a3a3a;
+  --code-color: #5dade2;
+  --bar-bg: #3a3a3a;
+  --bar-fill: #5dade2;
+  --toolbar-bg: #2a2a2a;
+  --input-bg: #1e1e1e;
+  --input-border: #3a3a3a;
+  --overlay-bg: rgba(0, 0, 0, 0.55);
+  --dialog-bg: #2a2a2a;
+  --close-bg: #e81123;
+  --close-active: #bf0f1d;
+  --toast-bg: #333;
+  --toast-error: #c0392b;
+  --scroll-thumb: rgba(204, 204, 204, 0.19);
+  --scroll-thumb-hover: rgba(204, 204, 204, 0.35);
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  background: var(--bg);
+}
+
+/* === Titlebar === */
+#titlebar {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  padding: 0 0 0 12px;
+  background: var(--titlebar-bg);
+  border-bottom: 1px solid var(--title-sep);
+  cursor: grab;
+  user-select: none;
+  flex-shrink: 0;
+}
+
+#titlebar:active {
+  cursor: grabbing;
+}
+
+#title-text {
+  flex: 1;
+  font-size: 12px;
+  color: var(--title-text);
+  pointer-events: none;
+}
+
+#titlebar-buttons {
+  display: flex;
+  height: 100%;
+}
+
+#titlebar-buttons button {
+  width: 46px;
+  height: 100%;
+  border: none;
+  background: transparent;
+  color: var(--btn-color);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.08s, color 0.08s;
+}
+
+#titlebar-buttons button:hover {
+  background: var(--btn-hover-bg);
+  color: var(--btn-hover-text);
+}
+
+#titlebar-buttons button:active {
+  background: var(--btn-active-bg);
+}
+
+#btn-close:hover {
+  background: var(--close-bg) !important;
+  color: #fff !important;
+}
+
+#btn-close:active {
+  background: var(--close-active) !important;
+}
+
+#btn-pin.active {
+  color: var(--pin-active);
+}
+
+#btn-pin.active svg path {
+  fill: var(--pin-active);
+}
+
+/* === Toolbar === */
+#toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--toolbar-bg);
+  border-bottom: 1px solid var(--card-border);
+  flex-shrink: 0;
+}
+
+#search {
+  flex: 1;
+  padding: 6px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+}
+
+#search:focus {
+  border-color: var(--code-color);
+}
+
+#btn-add {
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s;
+}
+
+#btn-add:hover {
+  background: var(--btn-hover-bg);
+}
+
+/* === Account list === */
+#account-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#account-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+#account-list::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 2px;
+}
+
+#account-list::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
+}
+
+.empty-state {
+  text-align: center;
+  padding: 48px 0;
+  color: var(--btn-color);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+/* === Account card === */
+.account-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  padding: 12px;
+  transition: border-color 0.15s;
+}
+
+.account-card:hover {
+  border-color: var(--code-color);
+}
+
+.card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 2px;
+}
+
+.card-issuer {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.card-label {
+  font-size: 12px;
+  color: var(--btn-color);
+  margin-bottom: 8px;
+}
+
+.card-delete {
+  background: none;
+  border: none;
+  color: var(--btn-color);
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.1s, color 0.1s;
+}
+
+.card-delete:hover {
+  opacity: 1;
+  color: var(--close-bg);
+}
+
+.card-code {
+  font-size: 28px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  color: var(--code-color);
+  font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
+  cursor: pointer;
+  user-select: all;
+  margin-bottom: 6px;
+}
+
+.card-bar {
+  height: 4px;
+  background: var(--bar-bg);
+  border-radius: 2px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.card-bar-fill {
+  height: 100%;
+  background: var(--bar-fill);
+  border-radius: 2px;
+  transition: width 1s linear;
+  width: 0%;
+}
+
+.card-timer {
+  font-size: 11px;
+  color: var(--btn-color);
+  text-align: right;
+}
+
+/* === Lock overlay === */
+#lock-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-bg);
+  z-index: 100;
+  backdrop-filter: blur(6px);
+}
+
+#lock-overlay.hidden {
+  display: none;
+}
+
+#lock-card {
+  background: var(--dialog-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 24px;
+  width: 260px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#lock-title {
+  font-size: 16px;
+  font-weight: 600;
+  text-align: center;
+}
+
+#lock-input {
+  padding: 8px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 18px;
+  text-align: center;
+  letter-spacing: 8px;
+  font-family: monospace;
+  outline: none;
+}
+
+#lock-input:focus {
+  border-color: var(--code-color);
+}
+
+#lock-submit {
+  padding: 8px;
+  border: none;
+  border-radius: 4px;
+  background: var(--code-color);
+  color: var(--bg);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.1s;
+}
+
+#lock-submit:hover {
+  opacity: 0.85;
+}
+
+#lock-error {
+  font-size: 12px;
+  color: var(--close-bg);
+  text-align: center;
+}
+
+#lock-error.hidden {
+  display: none;
+}
+
+/* === Account dialog === */
+#account-dialog {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-bg);
+  z-index: 100;
+  backdrop-filter: blur(6px);
+}
+
+#account-dialog.hidden {
+  display: none;
+}
+
+#dialog-card {
+  background: var(--dialog-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 20px;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+#dialog-title {
+  font-size: 16px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+#dialog-card input, #dialog-card select {
+  padding: 8px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+}
+
+#dialog-card input:focus, #dialog-card select:focus {
+  border-color: var(--code-color);
+}
+
+.dialog-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dialog-row label {
+  font-size: 12px;
+  color: var(--btn-color);
+  min-width: 56px;
+}
+
+.dialog-row select {
+  flex: 1;
+}
+
+.dialog-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.dialog-actions button {
+  flex: 1;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.1s;
+}
+
+#dialog-cancel {
+  background: transparent;
+  border: 1px solid var(--input-border);
+  color: var(--text);
+}
+
+#dialog-cancel:hover {
+  opacity: 0.8;
+}
+
+#dialog-submit {
+  background: var(--code-color);
+  border: none;
+  color: var(--bg);
+}
+
+#dialog-submit:hover {
+  opacity: 0.85;
+}
+
+/* === Toast === */
+#toast-bar {
+  position: fixed;
+  bottom: 16px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--toast-bg);
+  color: #eee;
+  padding: 8px 20px;
+  border-radius: 6px;
+  font-size: 13px;
+  z-index: 9999;
+  white-space: nowrap;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+  transition: all 0.25s ease;
+}
+
+#toast-bar.hidden {
+  opacity: 0;
+  transform: translateX(-50%) translateY(8px);
+  pointer-events: none;
+}
+
+#toast-bar.error {
+  background: var(--toast-error);
+  color: #fff;
+}
