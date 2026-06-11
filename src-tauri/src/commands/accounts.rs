@@ -43,6 +43,145 @@ fn decode_secret(input: &str) -> Result<Vec<u8>, String> {
     .ok_or_else(|| "invalid base32 secret".to_string())
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // ── decode_secret unit tests ──────────────────────────────
+
+    #[test]
+    fn test_decode_secret_valid_base32() {
+        // GEZDGNBVGY3TQOJQ is the RFC 6238 test secret in base32 (decodes to "1234567890")
+        let result = decode_secret("GEZDGNBVGY3TQOJQ").unwrap();
+        assert_eq!(result, b"1234567890");
+    }
+
+    #[test]
+    fn test_decode_secret_with_whitespace() {
+        let result = decode_secret("GEZD GNBV GY3T QOJQ").unwrap();
+        assert_eq!(result, b"1234567890");
+    }
+
+    #[test]
+    fn test_decode_secret_lowercase() {
+        let result = decode_secret("gezdgnbvg63tqojq").unwrap();
+        // Lowercase base32 decodes to same bytes; verify non-empty
+        assert!(!result.is_empty());
+    }
+
+    #[test]
+    fn test_decode_secret_invalid_chars() {
+        assert!(decode_secret("!!!!invalid!!!!").is_err());
+    }
+
+    #[test]
+    fn test_decode_secret_empty() {
+        // Empty string decodes to empty bytes (base32 decodes "" to Some(vec![]))
+        let result = decode_secret("").unwrap();
+        assert!(result.is_empty());
+    }
+
+    #[test]
+    fn test_decode_secret_rfc4648_standard() {
+        let result = decode_secret("HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ").unwrap();
+        assert!(!result.is_empty());
+    }
+
+    // ── Storage-level integration tests ──────────────────────
+
+    fn cleanup_auth_file() {
+        let path = crate::paths::auth_path();
+        if path.exists() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+
+    fn with_fs_lock(f: impl FnOnce()) {
+        let _lock = crate::storage::auth_file::FS_TEST_MUTEX.lock().unwrap();
+        f();
+    }
+
+    fn test_key() -> [u8; 32] {
+        [0xAAu8; 32]
+    }
+
+    #[test]
+    fn test_save_accounts_plaintext_roundtrip() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "a1".into(), issuer: "Test".into(), label: "x".into(),
+                algorithm: Algorithm::SHA1, digits: 6, period: 30,
+                secret: vec![1, 2, 3], sort_order: 0,
+                created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let loaded = crate::storage::try_load().unwrap();
+            assert!(!loaded.accounts.encrypted, "expected plaintext accounts");
+            let mut reloaded = crate::storage::load_accounts(&loaded, None).unwrap();
+            assert_eq!(reloaded.len(), 1);
+            assert_eq!(reloaded[0].issuer, "Test");
+            for a in &mut reloaded { a.secret.zeroize(); }
+            reloaded.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_save_accounts_encrypted_roundtrip() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            data.config.password_protected = true;
+            let accounts = vec![Account {
+                id: "enc1".into(), issuer: "Enc".into(), label: "e".into(),
+                algorithm: Algorithm::SHA256, digits: 8, period: 60,
+                secret: vec![9, 8, 7], sort_order: 0,
+                created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+            }];
+            let key = test_key();
+            save_accounts(&mut data, &accounts, Some(key)).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let loaded = crate::storage::try_load().unwrap();
+            assert!(loaded.accounts.encrypted);
+            let mut reloaded = crate::storage::load_accounts(&loaded, Some(key)).unwrap();
+            assert_eq!(reloaded.len(), 1);
+            assert_eq!(reloaded[0].issuer, "Enc");
+            for a in &mut reloaded { a.secret.zeroize(); }
+            reloaded.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_save_accounts_locked_fails() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            data.config.password_protected = true;
+            let accounts = vec![];
+            assert!(save_accounts(&mut data, &accounts, None).is_err());
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_zeroize_accounts_clears_secrets() {
+        let mut accounts = vec![Account {
+            id: "z".into(), issuer: "Z".into(), label: "z".into(),
+            algorithm: Algorithm::SHA1, digits: 6, period: 30,
+            secret: vec![1, 2, 3, 4], sort_order: 0,
+            created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+        }];
+        zeroize_accounts(&mut accounts);
+        assert!(accounts.is_empty());
+    }
+}
+
 #[tauri::command]
 pub fn add_account(
     issuer: String,

@@ -51,3 +51,80 @@ impl From<&Account> for AccountSummary {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_summary_excludes_secret() {
+        let account = Account {
+            id: "abc123".into(),
+            issuer: "Google".into(),
+            label: "user@gmail.com".into(),
+            algorithm: Algorithm::SHA1,
+            digits: 6,
+            period: 30,
+            secret: vec![1, 2, 3, 4, 5],
+            sort_order: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let summary = AccountSummary::from(&account);
+        assert_eq!(summary.id, "abc123");
+        assert_eq!(summary.issuer, "Google");
+        assert_eq!(summary.label, "user@gmail.com");
+        assert_eq!(summary.digits, 6);
+        assert_eq!(summary.period, 30);
+        assert_eq!(summary.sort_order, 0);
+        // Secret must NOT be present in the summary struct
+        // (compile-time guarantee — AccountSummary has no secret field)
+    }
+
+    #[test]
+    fn test_summary_preserves_algorithm() {
+        for algo in [Algorithm::SHA1, Algorithm::SHA256, Algorithm::SHA512] {
+            let account = Account {
+                id: "test".into(),
+                issuer: "X".into(),
+                label: "x".into(),
+                algorithm: algo.clone(),
+                digits: 6,
+                period: 30,
+                secret: vec![],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            };
+            let summary = AccountSummary::from(&account);
+            assert_eq!(
+                format!("{:?}", summary.algorithm),
+                format!("{:?}", algo)
+            );
+        }
+    }
+
+    #[test]
+    fn test_summary_roundtrip_json() {
+        let account = Account {
+            id: "json-test".into(),
+            issuer: "GitHub".into(),
+            label: "dev@github.com".into(),
+            algorithm: Algorithm::SHA256,
+            digits: 8,
+            period: 60,
+            secret: vec![10, 20, 30],
+            sort_order: 3,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        };
+        let summary = AccountSummary::from(&account);
+        let json = serde_json::to_string(&summary).unwrap();
+        let restored: AccountSummary = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.id, "json-test");
+        assert_eq!(restored.issuer, "GitHub");
+        assert_eq!(restored.digits, 8);
+        assert_eq!(restored.period, 60);
+        assert_eq!(restored.sort_order, 3);
+    }
+}
