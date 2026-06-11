@@ -134,6 +134,78 @@ fn save_config(cfg: crate::config::Config) -> Result<(), String> {
     crate::storage::save(&data)
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cleanup_auth_file() {
+        let path = crate::paths::auth_path();
+        if path.exists() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+
+    fn with_fs_lock(f: impl FnOnce()) {
+        let _lock = crate::storage::auth_file::FS_TEST_MUTEX.lock().unwrap();
+        f();
+    }
+
+    #[test]
+    fn test_save_config_preserves_password_metadata() {
+        with_fs_lock(|| {
+        cleanup_auth_file();
+        // Seed an auth file with PIN protection set AND encrypted accounts
+        // (reconcile_invariants resets password_protected if accounts are unencrypted)
+        let key = [0x42u8; 32];
+        let accounts: Vec<crate::models::account::Account> = vec![];
+        let mut data = crate::storage::try_load().unwrap();
+        data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
+        data.config.password_protected = true;
+        data.config.password_salt = "deadbeef".into();
+        crate::storage::save(&data).unwrap();
+
+        // Attempt to save a config that has password_protected=false (like frontend might send)
+        let cfg = crate::config::Config {
+            password_protected: false,
+            password_salt: String::new(),
+            ..crate::config::Config::default()
+        };
+        save_config(cfg).unwrap();
+
+        // Verify metadata was preserved
+        let loaded = crate::storage::try_load().unwrap();
+        assert!(loaded.config.password_protected, "password_protected must be preserved by save_config");
+        assert_eq!(loaded.config.password_salt, "deadbeef", "password_salt must be preserved by save_config");
+        cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_save_config_updates_non_security_fields() {
+        with_fs_lock(|| {
+        cleanup_auth_file();
+        let mut data = crate::storage::try_load().unwrap();
+        data.config.theme = "dark".into();
+        data.config.width = 320;
+        crate::storage::save(&data).unwrap();
+
+        let cfg = crate::config::Config {
+            theme: "light".into(),
+            width: 400,
+            clipboard_clear_seconds: 60,
+            ..crate::config::Config::default()
+        };
+        save_config(cfg).unwrap();
+
+        let loaded = crate::storage::try_load().unwrap();
+        assert_eq!(loaded.config.theme, "light", "theme should be updated");
+        assert_eq!(loaded.config.width, 400, "width should be updated");
+        assert_eq!(loaded.config.clipboard_clear_seconds, 60, "clipboard_clear_seconds should be updated");
+        cleanup_auth_file();
+        });
+    }
+}
+
 // ── App entry ────────────────────────────────────────────────
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

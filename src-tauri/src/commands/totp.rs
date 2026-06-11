@@ -202,4 +202,36 @@ mod tests {
             );
         }
     }
+
+    #[test]
+    fn test_60_second_period() {
+        let secret = b"12345678901234567890";
+        let mut account = test_account(secret, Algorithm::SHA1, 6);
+        account.period = 60;
+        let totp = make_totp(&account).unwrap();
+        // Counter = floor(ts/60). t=0 and t=59 both give counter 0 → same code
+        assert_eq!(totp.generate(0), totp.generate(59));
+        // t=59 gives counter 0, t=60 gives counter 1 → different code
+        assert_ne!(totp.generate(59), totp.generate(60));
+        // t=60 and t=119 both give counter 1 → same code
+        assert_eq!(totp.generate(60), totp.generate(119));
+    }
+
+    #[test]
+    fn test_code_rolls_at_period_boundary() {
+        let secret = b"12345678901234567890";
+        let account = test_account(secret, Algorithm::SHA1, 6);
+        let totp = make_totp(&account).unwrap();
+        // At t=29 and t=30, the code SHOULD be different (30s period)
+        assert_ne!(totp.generate(29), totp.generate(30), "code must roll at period boundary");
+        // But t=0 and t=29 should be same (same counter 0)
+        assert_eq!(totp.generate(0), totp.generate(29));
+    }
+
+    #[test]
+    fn test_invalid_digits_fails() {
+        let secret = b"12345678901234567890";
+        let account = test_account(secret, Algorithm::SHA1, 9); // invalid digit count
+        assert!(make_totp(&account).is_err());
+    }
 }

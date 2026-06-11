@@ -180,6 +180,137 @@ mod tests {
         zeroize_accounts(&mut accounts);
         assert!(accounts.is_empty());
     }
+
+    // ── add_account_from_uri via storage layer ────────────────
+
+    #[test]
+    fn test_add_account_from_uri_via_storage() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let uri = "otpauth://totp/ACME:john@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&issuer=ACME&algorithm=SHA1&digits=6&period=30";
+            let parsed = crate::utils::otpauth::parse_uri(uri).unwrap();
+
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "uri-test".into(),
+                issuer: parsed.issuer.clone(),
+                label: parsed.label.clone(),
+                algorithm: parsed.algorithm.clone(),
+                digits: parsed.digits,
+                period: parsed.period,
+                secret: parsed.secret.clone(),
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }];
+            // Verify the parsed URI content is correct
+            assert_eq!(accounts[0].issuer, "ACME");
+            assert_eq!(accounts[0].label, "john@example.com");
+            assert_eq!(accounts[0].digits, 6);
+            assert_eq!(accounts[0].period, 30);
+            assert!(!accounts[0].secret.is_empty());
+
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let loaded = crate::storage::try_load().unwrap();
+            let mut reloaded = crate::storage::load_accounts(&loaded, None).unwrap();
+            assert_eq!(reloaded.len(), 1);
+            assert_eq!(reloaded[0].issuer, "ACME");
+            for a in &mut reloaded { a.secret.zeroize(); }
+            reloaded.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    // ── search case-insensitivity ────────────────────────────
+
+    #[test]
+    fn test_list_accounts_search_case_insensitive() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![
+                Account {
+                    id: "s1".into(), issuer: "GitHub".into(), label: "dev@github.com".into(),
+                    algorithm: Algorithm::SHA1, digits: 6, period: 30,
+                    secret: vec![1], sort_order: 0,
+                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                },
+                Account {
+                    id: "s2".into(), issuer: "Google".into(), label: "user@gmail.com".into(),
+                    algorithm: Algorithm::SHA1, digits: 6, period: 30,
+                    secret: vec![2], sort_order: 1,
+                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                },
+            ];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let loaded = crate::storage::try_load().unwrap();
+            let mut reloaded = crate::storage::load_accounts(&loaded, None).unwrap();
+
+            // Simulate list_accounts search logic
+            let summaries: Vec<_> = reloaded.iter().map(AccountSummary::from).collect();
+            // Case-insensitive: "github" should match "GitHub"
+            let q = "github";
+            let filtered: Vec<_> = summaries.iter().filter(|a|
+                a.issuer.to_lowercase().contains(q) || a.label.to_lowercase().contains(q)
+            ).collect();
+            assert_eq!(filtered.len(), 1);
+            assert_eq!(filtered[0].issuer, "GitHub");
+
+            // Uppercase search should also match "GitHub"
+            let q = "GITHUB";
+            let filtered: Vec<_> = summaries.iter().filter(|a|
+                a.issuer.to_lowercase().contains(&q.to_lowercase()) || a.label.to_lowercase().contains(&q.to_lowercase())
+            ).collect();
+            assert_eq!(filtered.len(), 1);
+
+            for a in &mut reloaded { a.secret.zeroize(); }
+            reloaded.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    // ── update_account sort_order ────────────────────────────
+
+    #[test]
+    fn test_update_account_sort_order_via_storage() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            let mut accounts = vec![
+                Account {
+                    id: "first".into(), issuer: "A".into(), label: "a".into(),
+                    algorithm: Algorithm::SHA1, digits: 6, period: 30,
+                    secret: vec![1], sort_order: 0,
+                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                },
+                Account {
+                    id: "second".into(), issuer: "B".into(), label: "b".into(),
+                    algorithm: Algorithm::SHA1, digits: 6, period: 30,
+                    secret: vec![2], sort_order: 1,
+                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                },
+            ];
+            // Reorder: swap first and second
+            accounts[0].sort_order = 1;
+            accounts[1].sort_order = 0;
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let loaded = crate::storage::try_load().unwrap();
+            let mut reloaded = crate::storage::load_accounts(&loaded, None).unwrap();
+            // Sort by sort_order to verify reorder persisted
+            reloaded.sort_by_key(|a| a.sort_order);
+            assert_eq!(reloaded[0].id, "second");
+            assert_eq!(reloaded[1].id, "first");
+            for a in &mut reloaded { a.secret.zeroize(); }
+            reloaded.clear();
+            cleanup_auth_file();
+        });
+    }
 }
 
 #[tauri::command]
