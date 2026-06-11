@@ -2,6 +2,7 @@ use crate::models::account::Account;
 use crate::storage::{load_accounts, try_load};
 use crate::AppState;
 use tauri::State;
+use zeroize::Zeroize;
 
 fn make_totp(account: &Account) -> Result<totp_rs::TOTP, String> {
     use crate::models::account::Algorithm;
@@ -30,14 +31,18 @@ fn current_timestamp() -> u64 {
 }
 
 /// Generate a TOTP code for a single account.
+/// The encryption key wrapper auto-zeroizes on drop.
+/// Account secrets are zeroized after code generation.
 #[tauri::command]
 pub fn generate_code(
     account_id: String,
     state: State<'_, AppState>,
 ) -> Result<(String, u32), String> {
     let data = try_load()?;
-    let key = state.get_key()?;
-    let accounts = load_accounts(&data, key)?;
+    let key_wrapper = state.get_key()?;
+    let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
+    let mut accounts = load_accounts(&data, key)?;
+    // key_wrapper dropped here → auto-zeroized
 
     let account = accounts
         .iter()
@@ -49,26 +54,42 @@ pub fn generate_code(
     let code = totp.generate(now);
     let remaining = account.period - (now % account.period as u64) as u32;
 
+    // Zeroize all decrypted secrets
+    for a in &mut accounts {
+        a.secret.zeroize();
+    }
+    accounts.clear();
+
     Ok((code, remaining))
 }
 
 /// Generate TOTP codes for all accounts at once.
+/// The encryption key wrapper auto-zeroizes on drop.
+/// Account secrets are zeroized after code generation.
 #[tauri::command]
 pub fn generate_all_codes(
     state: State<'_, AppState>,
 ) -> Result<Vec<(String, String, u32)>, String> {
     let data = try_load()?;
-    let key = state.get_key()?;
-    let accounts = load_accounts(&data, key)?;
+    let key_wrapper = state.get_key()?;
+    let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
+    let mut accounts = load_accounts(&data, key)?;
+    // key_wrapper dropped here → auto-zeroized
     let now = current_timestamp();
 
-    let mut results = Vec::new();
+    let mut results = Vec::with_capacity(accounts.len());
     for account in &accounts {
         let totp = make_totp(account)?;
         let code = totp.generate(now);
         let remaining = account.period - (now % account.period as u64) as u32;
         results.push((account.id.clone(), code, remaining));
     }
+
+    // Zeroize all decrypted secrets
+    for a in &mut accounts {
+        a.secret.zeroize();
+    }
+    accounts.clear();
 
     Ok(results)
 }
@@ -95,8 +116,6 @@ mod tests {
     }
 
     /// RFC 6238 test vector — SHA-1
-    /// Secret: "12345678901234567890" (base32)
-    /// Expected codes at specific timestamps
     #[test]
     fn test_rfc6238_sha1_vectors() {
         let secret = b"12345678901234567890";

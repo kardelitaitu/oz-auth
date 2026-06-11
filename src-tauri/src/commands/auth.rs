@@ -1,6 +1,7 @@
 use crate::storage::{decrypt_accounts, encrypt_accounts, save, try_load};
 use crate::AppState;
 use tauri::State;
+use zeroize::Zeroize;
 
 #[tauri::command]
 pub fn set_lock(pin: String, state: State<'_, AppState>) -> Result<(), String> {
@@ -15,18 +16,25 @@ pub fn set_lock(pin: String, state: State<'_, AppState>) -> Result<(), String> {
 
     let salt = crate::crypto::generate_salt();
     let salt_hex = hex::encode(salt);
-    let key = crate::crypto::derive_key(&pin, &salt)?;
+    let mut key = crate::crypto::derive_key(&pin, &salt)?;
 
     // Parse current plaintext accounts
-    let accounts: Vec<crate::models::account::Account> =
+    let mut accounts: Vec<crate::models::account::Account> =
         serde_json::from_str(&data.accounts.data_json).unwrap_or_default();
 
     // Re-encrypt
     data.accounts = encrypt_accounts(&accounts, &key)?;
     data.config.password_protected = true;
     data.config.password_salt = salt_hex;
-    data.log = crate::diagnostics::flush_to_log_str();    save(&data)?;
+    data.log = crate::diagnostics::flush_to_log_str();
+    save(&data)?;
     state.set_key(key)?;
+    // Zeroize derived key and account secrets
+    key.zeroize();
+    for a in &mut accounts {
+        a.secret.zeroize();
+    }
+    accounts.clear();
     crate::diagnostics::event("security", "PIN set");
 
     Ok(())
@@ -39,26 +47,38 @@ pub fn unlock(pin: String, state: State<'_, AppState>) -> Result<bool, String> {
         return Err("PIN is not set".to_string());
     }
 
-    let salt = hex::decode(&data.config.password_salt)
+    let mut salt = hex::decode(&data.config.password_salt)
         .map_err(|e| format!("invalid salt: {e}"))?;
-    let key = crate::crypto::derive_key(&pin, &salt)?;
+    let mut key = crate::crypto::derive_key(&pin, &salt)?;
 
     // Try to decrypt — if it fails, wrong PIN
-    match decrypt_accounts(&data.accounts, &key) {
-        Ok(_) => {
+    let result = match decrypt_accounts(&data.accounts, &key) {
+        Ok(mut accounts) => {
+            // Zeroize decrypted accounts — we only needed them for validation
+            for a in &mut accounts {
+                a.secret.zeroize();
+            }
+            accounts.clear();
+            // set_key copies the key into the Zeroizing wrapper; our local
+            // copy is zeroized below (arrays are Copy in Rust).
             state.set_key(key)?;
+            key.zeroize();
+            salt.zeroize();
             crate::diagnostics::event("security", "unlocked");
             Ok(true)
         }
         Err(e) => {
-            // Don't reveal whether it was wrong PIN or corruption
+            key.zeroize();
+            salt.zeroize();
             if e.contains("wrong password") || e.contains("corrupted") {
                 Ok(false)
             } else {
                 Err(e)
             }
         }
-    }
+    };
+
+    result
 }
 
 #[tauri::command]
@@ -68,13 +88,14 @@ pub fn lock(state: State<'_, AppState>) -> Result<(), String> {
     Ok(())
 }
 
+/// Check if the app is locked without cloning the encryption key.
 #[tauri::command]
 pub fn is_locked(state: State<'_, AppState>) -> Result<bool, String> {
     let data = try_load()?;
     if !data.config.password_protected {
         return Ok(false);
     }
-    Ok(state.get_key()?.is_none())
+    Ok(!state.has_key())
 }
 
 #[tauri::command]
@@ -94,17 +115,25 @@ pub fn change_pin(
 
     let old_salt = hex::decode(&data.config.password_salt)
         .map_err(|e| format!("invalid salt: {e}"))?;
-    let old_key = crate::crypto::derive_key(&old_pin, &old_salt)?;
+    let mut old_key = crate::crypto::derive_key(&old_pin, &old_salt)?;
 
-    let accounts = decrypt_accounts(&data.accounts, &old_key)
+    let mut accounts = decrypt_accounts(&data.accounts, &old_key)
         .map_err(|_| "wrong current PIN".to_string())?;
 
     let new_salt = crate::crypto::generate_salt();
-    let new_key = crate::crypto::derive_key(&new_pin, &new_salt)?;
+    let mut new_key = crate::crypto::derive_key(&new_pin, &new_salt)?;
     data.accounts = encrypt_accounts(&accounts, &new_key)?;
     data.config.password_salt = hex::encode(new_salt);
     data.log = crate::diagnostics::flush_to_log_str();
     save(&data)?;
+
+    // Zeroize the old key, account secrets, and new key after use
+    old_key.zeroize();
+    new_key.zeroize();
+    for a in &mut accounts {
+        a.secret.zeroize();
+    }
+    accounts.clear();
 
     state.set_key(new_key)?;
     crate::diagnostics::event("security", "PIN changed");
@@ -123,7 +152,6 @@ pub fn export_backup(path: String) -> Result<(), String> {
 
 #[tauri::command]
 pub fn import_backup(path: String, state: State<'_, AppState>) -> Result<(), String> {
-    // Validate the backup file can be parsed
     let raw = std::fs::read_to_string(&path)
         .map_err(|e| format!("failed to read backup: {e}"))?;
     let _backup: crate::storage::auth_file::AuthData = serde_json::from_str(&raw)
@@ -132,7 +160,7 @@ pub fn import_backup(path: String, state: State<'_, AppState>) -> Result<(), Str
     let dest = crate::paths::auth_path();
     std::fs::copy(&path, &dest)
         .map_err(|e| format!("failed to import backup: {e}"))?;
-    state.clear_key()?; // Lock after import — need to re-authenticate
+    state.clear_key()?;
     crate::diagnostics::event("backup", &format!("imported from {path}"));
 
     Ok(())

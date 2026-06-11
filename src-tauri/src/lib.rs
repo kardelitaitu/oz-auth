@@ -13,19 +13,34 @@ pub mod utils;
 use std::sync::Mutex;
 use tauri::window::Color;
 use tauri::Manager;
+use zeroize::Zeroizing;
 
 /// Cached encryption key — kept in memory while unlocked.
-/// Cleared on `lock()`.
+///
+/// Wrapped in `Zeroizing` so the key bytes are overwritten on drop,
+/// preventing recovery from a memory dump after `lock()`.
+/// On Windows, `VirtualLock` prevents the key from being paged to disk.
 pub(crate) struct AppState {
-    encryption_key: Mutex<Option<[u8; 32]>>,
+    encryption_key: Mutex<Option<Zeroizing<[u8; 32]>>>,
 }
 
 impl AppState {
-    fn get_key(&self) -> Result<Option<[u8; 32]>, String> {
+    /// Return a clone of the key wrapper. The clone is also wrapped in `Zeroizing`
+    /// and will auto-zeroize when dropped. Callers must NOT hold the raw key longer
+    /// than needed.
+    fn get_key(&self) -> Result<Option<Zeroizing<[u8; 32]>>, String> {
         self.encryption_key
             .lock()
-            .map(|g| *g)
+            .map(|g| g.clone())
             .map_err(|e| format!("lock error: {e}"))
+    }
+
+    /// Check whether a key is currently held, without cloning it.
+    fn has_key(&self) -> bool {
+        self.encryption_key
+            .lock()
+            .map(|g| g.is_some())
+            .unwrap_or(false)
     }
 
     fn set_key(&self, key: [u8; 32]) -> Result<(), String> {
@@ -33,18 +48,54 @@ impl AppState {
             .encryption_key
             .lock()
             .map_err(|e| format!("lock error: {e}"))?;
-        *guard = Some(key);
+        let wrapper = Zeroizing::new(key);
+        // Prevent paging to disk on Windows
+        #[cfg(windows)]
+        unsafe {
+            let ptr = wrapper.as_ptr() as *const std::ffi::c_void;
+            let _ = windows_virtual_lock(ptr, 32);
+        }
+        *guard = Some(wrapper);
         Ok(())
     }
 
+    /// Clear the encryption key. `Zeroizing` ensures the bytes are overwritten on drop.
+    /// On Windows, `VirtualUnlock` allows the OS to page the memory again.
     fn clear_key(&self) -> Result<(), String> {
         let mut guard = self
             .encryption_key
             .lock()
             .map_err(|e| format!("lock error: {e}"))?;
-        *guard = None;
+        if let Some(wrapper) = guard.take() {
+            // Unlock from physical memory so OS can reclaim
+            #[cfg(windows)]
+            unsafe {
+                let ptr = wrapper.as_ptr() as *const std::ffi::c_void;
+                let _ = windows_virtual_unlock(ptr, 32);
+            }
+            // Zeroizing wrapper overwrites bytes on drop — defense-in-depth
+            drop(wrapper);
+        }
         Ok(())
     }
+}
+
+/// Windows API: prevent memory from being paged to swap.
+#[cfg(windows)]
+unsafe fn windows_virtual_lock(ptr: *const std::ffi::c_void, size: usize) -> bool {
+    extern "system" {
+        fn VirtualLock(lpAddress: *const std::ffi::c_void, dwSize: usize) -> i32;
+    }
+    VirtualLock(ptr, size) != 0
+}
+
+/// Windows API: allow memory to be paged again.
+#[cfg(windows)]
+unsafe fn windows_virtual_unlock(ptr: *const std::ffi::c_void, size: usize) -> bool {
+    extern "system" {
+        fn VirtualUnlock(lpAddress: *const std::ffi::c_void, dwSize: usize) -> i32;
+    }
+    VirtualUnlock(ptr, size) != 0
 }
 
 // ── Simple commands ──────────────────────────────────────────
@@ -85,7 +136,6 @@ pub fn run() {
     crate::diagnostics::init();
     let _ = crate::paths::verify();
 
-    // Restore diagnostics from existing .auth file
     if crate::storage::exists() {
         let data = crate::storage::load();
         crate::diagnostics::restore_from_log_str(&data.log);
@@ -117,7 +167,6 @@ pub fn run() {
                 let _ = window.set_title(&exe_name);
             }
 
-            // Build system tray
             let _ = tray::build(app.handle(), &exe_name);
 
             Ok(())

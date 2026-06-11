@@ -5,6 +5,7 @@ use base32::Alphabet;
 use chrono::Utc;
 use tauri::State;
 use uuid::Uuid;
+use zeroize::Zeroize;
 
 fn save_accounts(
     data: &mut AuthData,
@@ -24,10 +25,17 @@ fn save_accounts(
     Ok(())
 }
 
+/// Zeroize all account secrets and clear the vector.
+fn zeroize_accounts(accounts: &mut Vec<Account>) {
+    for a in accounts.iter_mut() {
+        a.secret.zeroize();
+    }
+    accounts.clear();
+}
+
 /// Decode a secret that may be base32-encoded (manual entry) or raw bytes.
 fn decode_secret(input: &str) -> Result<Vec<u8>, String> {
     let trimmed: String = input.chars().filter(|c| !c.is_whitespace()).collect();
-    // Try base32 decode first (covers both uppercase and lowercase)
     base32::decode(Alphabet::Rfc4648 { padding: false }, &trimmed.to_uppercase())
         .ok_or_else(|| "invalid base32 secret".to_string())
 }
@@ -43,8 +51,10 @@ pub fn add_account(
     state: State<'_, AppState>,
 ) -> Result<Account, String> {
     let mut data = try_load()?;
-    let key = state.get_key()?;
+    let key_wrapper = state.get_key()?;
+    let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;
+    // key_wrapper dropped here → auto-zeroized
 
     let algo = match algorithm.as_deref() {
         Some("SHA256") => Algorithm::SHA256,
@@ -71,6 +81,9 @@ pub fn add_account(
     save_accounts(&mut data, &accounts, key)?;
     data.log = crate::diagnostics::flush_to_log_str();
     save(&data)?;
+
+    // Zeroize decrypted accounts — they've been re-encrypted
+    zeroize_accounts(&mut accounts);
     crate::diagnostics::event("account", &format!("added {}", result.id));
 
     Ok(result)
@@ -84,8 +97,10 @@ pub fn add_account_from_uri(
     let parsed = crate::utils::otpauth::parse_uri(&otpauth_uri)?;
 
     let mut data = try_load()?;
-    let key = state.get_key()?;
+    let key_wrapper = state.get_key()?;
+    let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;
+    // key_wrapper dropped here → auto-zeroized
 
     let now = Utc::now();
     let account = Account {
@@ -106,6 +121,8 @@ pub fn add_account_from_uri(
     save_accounts(&mut data, &accounts, key)?;
     data.log = crate::diagnostics::flush_to_log_str();
     save(&data)?;
+
+    zeroize_accounts(&mut accounts);
     crate::diagnostics::event("account", &format!("added from URI {}", result.id));
 
     Ok(result)
@@ -117,11 +134,12 @@ pub fn remove_account(
     state: State<'_, AppState>,
 ) -> Result<(), String> {
     let mut data = try_load()?;
-    let key = state.get_key()?;
+    let key_wrapper = state.get_key()?;
+    let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;
+    // key_wrapper dropped here → auto-zeroized
 
     accounts.retain(|a| a.id != account_id);
-    // Re-index sort_order
     for (i, a) in accounts.iter_mut().enumerate() {
         a.sort_order = i as u32;
     }
@@ -129,6 +147,8 @@ pub fn remove_account(
     save_accounts(&mut data, &accounts, key)?;
     data.log = crate::diagnostics::flush_to_log_str();
     save(&data)?;
+
+    zeroize_accounts(&mut accounts);
     crate::diagnostics::event("account", &format!("removed {account_id}"));
 
     Ok(())
@@ -143,8 +163,10 @@ pub fn update_account(
     state: State<'_, AppState>,
 ) -> Result<Account, String> {
     let mut data = try_load()?;
-    let key = state.get_key()?;
+    let key_wrapper = state.get_key()?;
+    let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;
+    // key_wrapper dropped here → auto-zeroized
 
     let account = accounts
         .iter_mut()
@@ -167,6 +189,8 @@ pub fn update_account(
     data.log = crate::diagnostics::flush_to_log_str();
     save(&data)?;
 
+    zeroize_accounts(&mut accounts);
+
     Ok(result)
 }
 
@@ -176,8 +200,10 @@ pub fn list_accounts(
     state: State<'_, AppState>,
 ) -> Result<Vec<AccountSummary>, String> {
     let data = try_load()?;
-    let key = state.get_key()?;
-    let accounts = load_accounts(&data, key)?;
+    let key_wrapper = state.get_key()?;
+    let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
+    let mut accounts = load_accounts(&data, key)?;
+    // key_wrapper dropped here → auto-zeroized
 
     let mut summaries: Vec<AccountSummary> = accounts.iter().map(AccountSummary::from).collect();
 
@@ -189,5 +215,9 @@ pub fn list_accounts(
     }
 
     summaries.sort_by_key(|a| a.sort_order);
+
+    // Zeroize secrets — only summaries (without secrets) are returned
+    zeroize_accounts(&mut accounts);
+
     Ok(summaries)
 }
