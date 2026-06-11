@@ -45,6 +45,7 @@ const contextMenu = document.getElementById("context-menu");
 const accounts = [];
 const secondsRemaining = {};
 let lockTimeoutMinutes = 5;
+let clipboardClearSeconds = 30;
 let passwordProtected = false;
 
 // ── Tray icon update helper ────────────────────────────────
@@ -61,7 +62,7 @@ function toast(msg, isError = false) {
 }
 
 // ── Clipboard ──────────────────────────────────────────────
-const clipboard = createClipboardManager(toast);
+const clipboard = createClipboardManager(toast, clipboardClearSeconds);
 
 // ── Account operations ─────────────────────────────────────
 async function loadAccounts(query = "") {
@@ -326,7 +327,12 @@ btnSettings.addEventListener("click", () => {
         toast("Lock failed", true);
       }
     },
+    onClipboardClearSecondsChanged: (seconds) => {
+      clipboardClearSeconds = seconds;
+      clipboard.setClearSeconds(seconds);
+    },
     lockTimeoutMinutes,
+    clipboardClearSeconds,
     settingsOverlay,
     settingsTitle,
     settingsBody,
@@ -430,6 +436,8 @@ document.addEventListener("keydown", async (e) => {
     btnPin.classList.toggle("active", cfg.always_on_top);
     applyTheme(cfg.theme || detectSystemTheme());
     lockTimeoutMinutes = cfg.lock_timeout_minutes || 5;
+    clipboardClearSeconds = cfg.clipboard_clear_seconds || 30;
+    clipboard.setClearSeconds(clipboardClearSeconds);
     passwordProtected = cfg.password_protected;
 
     const isLocked = await lock.checkLock();
