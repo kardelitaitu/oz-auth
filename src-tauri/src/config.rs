@@ -15,6 +15,8 @@ pub struct Config {
     pub password_salt: String,
     #[serde(default = "default_lock_timeout")]
     pub lock_timeout_minutes: u32,
+    #[serde(default = "default_clipboard_clear_seconds")]
+    pub clipboard_clear_seconds: u32,
 }
 
 fn default_theme() -> String {
@@ -23,6 +25,10 @@ fn default_theme() -> String {
 
 fn default_lock_timeout() -> u32 {
     5
+}
+
+fn default_clipboard_clear_seconds() -> u32 {
+    30
 }
 
 impl Default for Config {
@@ -37,6 +43,7 @@ impl Default for Config {
             password_protected: false,
             password_salt: String::new(),
             lock_timeout_minutes: default_lock_timeout(),
+            clipboard_clear_seconds: default_clipboard_clear_seconds(),
         }
     }
 }
@@ -67,6 +74,7 @@ mod tests {
             password_protected: true,
             password_salt: "aabbccdd".to_string(),
             lock_timeout_minutes: 10,
+            clipboard_clear_seconds: 15,
         };
         let json = serde_json::to_string_pretty(&cfg).unwrap();
         let restored: Config = serde_json::from_str(&json).unwrap();

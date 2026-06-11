@@ -12,7 +12,9 @@ export function openSettings(config) {
     toast,
     onPinSet,
     onLockNow,
+    onClipboardClearSecondsChanged,
     lockTimeoutMinutes,
+    clipboardClearSeconds,
     settingsOverlay,
     settingsTitle,
     settingsBody,
@@ -71,10 +73,38 @@ export function openSettings(config) {
         <h3>Auto-Lock</h3>
         <p style="font-size:12px;color:var(--btn-color);margin-bottom:4px;">Lock after ${lockTimeoutMinutes} min of inactivity</p>
       </div>
+      <div class="settings-section">
+        <h3>Clipboard</h3>
+        <label style="font-size:12px;color:var(--btn-color);">Auto-clear after (seconds):</label>
+        <input type="number" id="clipboard-clear" value="${clipboardClearSeconds}" min="5" max="300" step="5" style="width:80px;margin-top:4px;" />
+        <button class="settings-btn primary" id="clipboard-save-btn" style="margin-top:4px;">Save</button>
+        <div class="settings-error hidden" id="clipboard-error"></div>
+      </div>
     `;
 
     settingsBody.innerHTML = html;
     const pinError = document.getElementById("pin-error");
+
+    // Clipboard timeout save
+    document.getElementById("clipboard-save-btn").addEventListener("click", async () => {
+      const val = parseInt(document.getElementById("clipboard-clear").value, 10);
+      const clipError = document.getElementById("clipboard-error");
+      if (isNaN(val) || val < 5 || val > 300) {
+        clipError.textContent = "Must be 5–300 seconds";
+        clipError.classList.remove("hidden");
+        return;
+      }
+      try {
+        const cfg = await invoke("load_config");
+        cfg.clipboard_clear_seconds = val;
+        await invoke("save_config", { cfg });
+        toast("Clipboard timeout saved");
+        if (onClipboardClearSecondsChanged) onClipboardClearSecondsChanged(val);
+      } catch (e) {
+        clipError.textContent = typeof e === "string" ? e : "Failed to save";
+        clipError.classList.remove("hidden");
+      }
+    });
 
     if (hasPin) {
       document.getElementById("pin-change-btn").addEventListener("click", async () => {
