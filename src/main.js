@@ -9,6 +9,7 @@ const btnClose = document.getElementById("btn-close");
 const accountList = document.getElementById("account-list");
 const searchInput = document.getElementById("search");
 const btnAdd = document.getElementById("btn-add");
+const btnTheme = document.getElementById("btn-theme");
 const lockOverlay = document.getElementById("lock-overlay");
 const lockInput = document.getElementById("lock-input");
 const lockSubmit = document.getElementById("lock-submit");
@@ -32,6 +33,7 @@ const qrCancel = document.getElementById("qr-cancel");
 let accounts = [];
 let locked = false;
 let countdownInterval = null;
+let clipboardTimer = null;
 
 // ── Toast ──────────────────────────────────────────────────
 function toast(msg, isError = false) {
@@ -214,7 +216,15 @@ async function copyCode(id) {
   const code = el.textContent.replace(/\s/g, "");
   try {
     await navigator.clipboard.writeText(code);
-    toast("Code copied");
+    toast("Code copied — auto-clears in 30s");
+    // Auto-clear clipboard after 30s
+    if (clipboardTimer) clearTimeout(clipboardTimer);
+    clipboardTimer = setTimeout(async () => {
+      try {
+        await navigator.clipboard.writeText("");
+        toast("Clipboard cleared");
+      } catch (_) {}
+    }, 30000);
   } catch (e) {
     toast("Copy failed", true);
   }
@@ -338,6 +348,28 @@ searchInput.addEventListener("input", () => {
   searchTimer = setTimeout(() => loadAccounts(searchInput.value.trim()), 200);
 });
 
+// ── Theme toggle ───────────────────────────────────────────
+function applyTheme(theme) {
+  document.body.className = theme === "light" ? "theme-light" : "theme-dark";
+  btnTheme.textContent = theme === "light" ? "☀️" : "🌙";
+}
+
+function detectSystemTheme() {
+  return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+}
+
+btnTheme.addEventListener("click", async () => {
+  const cfg = await invoke("load_config");
+  cfg.theme = cfg.theme === "light" ? "dark" : "light";
+  await invoke("save_config", { cfg });
+  applyTheme(cfg.theme);
+  if (cfg.theme === "light") {
+    toast("Light theme");
+  } else {
+    toast("Dark theme");
+  }
+});
+
 // ── Titlebar buttons ───────────────────────────────────────
 btnClose.addEventListener("click", async () => {
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
@@ -390,6 +422,38 @@ async function trackWindow() {
   });
 }
 
+// ── Keyboard shortcuts ─────────────────────────────────────
+document.addEventListener("keydown", async (e) => {
+  // Don't trigger shortcuts when typing in inputs (except search)
+  if (e.target.tagName === "INPUT" && e.target.id !== "search") return;
+  if (e.target.tagName === "SELECT") return;
+
+  if (e.key === "Escape") {
+    dialog.classList.add("hidden");
+    qrOverlay.classList.add("hidden");
+    stopCamera();
+    searchInput.blur();
+  }
+  if (e.ctrlKey && e.key === "n") {
+    e.preventDefault();
+    if (dialog.classList.contains("hidden")) btnAdd.click();
+  } else if (e.ctrlKey && e.key === "f") {
+    e.preventDefault();
+    searchInput.focus();
+    searchInput.select();
+  } else if (e.ctrlKey && e.key === "l") {
+    e.preventDefault();
+    if (!locked) {
+      try {
+        await invoke("lock");
+        locked = true;
+        stopCountdown();
+        showLock();
+      } catch (_) {}
+    }
+  }
+});
+
 // ── Init ───────────────────────────────────────────────────
 (async () => {
   try {
@@ -399,6 +463,7 @@ async function trackWindow() {
 
     const cfg = await invoke("load_config");
     btnPin.classList.toggle("active", cfg.always_on_top);
+    applyTheme(cfg.theme || detectSystemTheme());
 
     await checkLock();
     if (!locked) {
