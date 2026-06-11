@@ -10,6 +10,7 @@ const accountList = document.getElementById("account-list");
 const searchInput = document.getElementById("search");
 const btnAdd = document.getElementById("btn-add");
 const btnTheme = document.getElementById("btn-theme");
+const btnSettings = document.getElementById("btn-settings");
 const lockOverlay = document.getElementById("lock-overlay");
 const lockInput = document.getElementById("lock-input");
 const lockSubmit = document.getElementById("lock-submit");
@@ -28,12 +29,22 @@ const dialogCancel = document.getElementById("dialog-cancel");
 const dialogScan = document.getElementById("dialog-scan");
 const qrOverlay = document.getElementById("qr-overlay");
 const qrCancel = document.getElementById("qr-cancel");
+const settingsOverlay = document.getElementById("settings-overlay");
+const settingsTitle = document.getElementById("settings-title");
+const settingsBody = document.getElementById("settings-body");
+const settingsCancel = document.getElementById("settings-cancel");
+const contextMenu = document.getElementById("context-menu");
 
 // ── State ──────────────────────────────────────────────────
 let accounts = [];
 let locked = false;
 let countdownInterval = null;
 let clipboardTimer = null;
+let autoLockTimer = null;
+let lastActivity = Date.now();
+let contextAccountId = null;
+let lockTimeoutMinutes = 5;
+let passwordProtected = false;
 
 // ── Toast ──────────────────────────────────────────────────
 function toast(msg, isError = false) {
@@ -57,11 +68,13 @@ function showLock() {
   lockOverlay.classList.remove("hidden");
   lockError.classList.add("hidden");
   lockInput.value = "";
+  stopAutoLock();
   setTimeout(() => lockInput.focus(), 100);
 }
 
 function hideLock() {
   lockOverlay.classList.add("hidden");
+  startAutoLock();
 }
 
 lockSubmit.addEventListener("click", async () => {
@@ -75,6 +88,7 @@ lockSubmit.addEventListener("click", async () => {
       hideLock();
       await loadAccounts();
       startCountdown();
+      resetActivity();
     } else {
       lockError.classList.remove("hidden");
       lockInput.value = "";
@@ -90,6 +104,40 @@ lockSubmit.addEventListener("click", async () => {
 
 lockInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") lockSubmit.click();
+});
+
+// ── Auto-lock on inactivity ────────────────────────────────
+function resetActivity() {
+  lastActivity = Date.now();
+}
+
+function startAutoLock() {
+  stopAutoLock();
+  if (!passwordProtected || !lockTimeoutMinutes || lockTimeoutMinutes <= 0) return;
+  autoLockTimer = setInterval(async () => {
+    if (locked) return;
+    const idle = (Date.now() - lastActivity) / 1000 / 60;
+    if (idle >= lockTimeoutMinutes) {
+      try {
+        await invoke("lock");
+        locked = true;
+        stopCountdown();
+        showLock();
+      } catch (_) {}
+    }
+  }, 15000);
+}
+
+function stopAutoLock() {
+  if (autoLockTimer) {
+    clearInterval(autoLockTimer);
+    autoLockTimer = null;
+  }
+}
+
+// Track all user activity
+["mousemove", "keydown", "mousedown", "wheel", "touchstart", "contextmenu"].forEach((evt) => {
+  document.addEventListener(evt, resetActivity, { passive: true });
 });
 
 // ── Account loading ────────────────────────────────────────
@@ -117,17 +165,32 @@ function renderAccounts() {
     card.innerHTML = `
       <div class="card-header">
         <span class="card-issuer">${escapeHtml(a.issuer)}</span>
-        <button class="card-delete" title="Delete">×</button>
+        <div class="card-header-buttons">
+          <button class="card-edit" title="Edit" data-id="${a.id}">✎</button>
+          <button class="card-delete" title="Delete">×</button>
+        </div>
       </div>
       <div class="card-label">${escapeHtml(a.label)}</div>
       <div class="card-code" data-id="${a.id}">------</div>
       <div class="card-bar"><div class="card-bar-fill" data-id="${a.id}"></div></div>
       <div class="card-timer" data-id="${a.id}">--s</div>
     `;
+    // Copy code on click
     card.querySelector(".card-code").addEventListener("click", () => copyCode(a.id));
+    // Edit button
+    card.querySelector(".card-edit").addEventListener("click", (e) => {
+      e.stopPropagation();
+      openEditDialog(a.id);
+    });
+    // Delete button
     card.querySelector(".card-delete").addEventListener("click", (e) => {
       e.stopPropagation();
       deleteAccount(a.id);
+    });
+    // Right-click context menu
+    card.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      showContextMenu(e.clientX, e.clientY, a.id);
     });
     accountList.appendChild(card);
   });
@@ -138,6 +201,37 @@ function escapeHtml(s) {
   div.textContent = s;
   return div.innerHTML;
 }
+
+// ── Context menu ───────────────────────────────────────────
+function showContextMenu(x, y, accountId) {
+  contextAccountId = accountId;
+  // Show first so we can measure
+  contextMenu.classList.remove("hidden");
+  const rect = contextMenu.getBoundingClientRect();
+  const clampedX = Math.min(x, window.innerWidth - rect.width - 4);
+  const clampedY = Math.min(y, window.innerHeight - rect.height - 4);
+  contextMenu.style.left = `${Math.max(4, clampedX)}px`;
+  contextMenu.style.top = `${Math.max(4, clampedY)}px`;
+}
+
+function hideContextMenu() {
+  contextMenu.classList.add("hidden");
+  contextAccountId = null;
+}
+
+document.addEventListener("click", (e) => {
+  if (!contextMenu.contains(e.target)) hideContextMenu();
+});
+
+contextMenu.querySelector('[data-action="edit"]').addEventListener("click", () => {
+  if (contextAccountId) openEditDialog(contextAccountId);
+  hideContextMenu();
+});
+
+contextMenu.querySelector('[data-action="delete"]').addEventListener("click", () => {
+  if (contextAccountId) deleteAccount(contextAccountId);
+  hideContextMenu();
+});
 
 // ── Countdown / TOTP refresh ───────────────────────────────
 let secondsRemaining = {};
@@ -183,7 +277,6 @@ function startCountdown() {
       }
     }
     updateBars();
-    // Update tray icon with average countdown progress
     if (count > 0) {
       invoke("update_tray_icon", { pct: totalPct / count }).catch(() => {});
     }
@@ -217,7 +310,6 @@ async function copyCode(id) {
   try {
     await navigator.clipboard.writeText(code);
     toast("Code copied — auto-clears in 30s");
-    // Auto-clear clipboard after 30s
     if (clipboardTimer) clearTimeout(clipboardTimer);
     clipboardTimer = setTimeout(async () => {
       try {
@@ -236,6 +328,7 @@ async function deleteAccount(id) {
   try {
     await invoke("remove_account", { accountId: id });
     toast("Account deleted");
+    hideContextMenu();
     await loadAccounts();
     refreshCodes();
   } catch (e) {
@@ -243,8 +336,26 @@ async function deleteAccount(id) {
   }
 }
 
-// ── Add Account dialog ─────────────────────────────────────
+// ── Add / Edit Account dialog ──────────────────────────────
 let editId = null;
+
+function openEditDialog(id) {
+  const account = accounts.find((a) => a.id === id);
+  if (!account) return;
+  editId = id;
+  dialogTitle.textContent = "Edit Account";
+  dialogIssuer.value = account.issuer;
+  dialogLabel.value = account.label;
+  dialogSecret.value = "";
+  dialogSecret.style.display = "none";
+  dialogAlgorithm.parentElement.style.display = "none";
+  dialogDigits.parentElement.style.display = "none";
+  dialogPeriod.parentElement.style.display = "none";
+  dialogSubmit.textContent = "Save";
+  dialogScan.style.display = "none";
+  dialog.classList.remove("hidden");
+  dialogIssuer.focus();
+}
 
 btnAdd.addEventListener("click", () => {
   editId = null;
@@ -252,10 +363,16 @@ btnAdd.addEventListener("click", () => {
   dialogIssuer.value = "";
   dialogLabel.value = "";
   dialogSecret.value = "";
+  dialogSecret.placeholder = "Secret key";
+  dialogSecret.style.display = "";
+  dialogAlgorithm.parentElement.style.display = "";
+  dialogDigits.parentElement.style.display = "";
+  dialogPeriod.parentElement.style.display = "";
   dialogAlgorithm.value = "SHA1";
   dialogDigits.value = "6";
   dialogPeriod.value = "30";
   dialogSubmit.textContent = "Add";
+  dialogScan.style.display = "";
   dialog.classList.remove("hidden");
   dialogIssuer.focus();
 });
@@ -268,25 +385,50 @@ dialogSubmit.addEventListener("click", async () => {
   const issuer = dialogIssuer.value.trim();
   const label = dialogLabel.value.trim();
   const secret = dialogSecret.value.trim();
-  if (!issuer || !label || !secret) {
-    toast("All fields required", true);
-    return;
-  }
-  try {
-    await invoke("add_account", {
-      issuer,
-      label,
-      secret,
-      algorithm: dialogAlgorithm.value,
-      digits: parseInt(dialogDigits.value),
-      period: parseInt(dialogPeriod.value),
-    });
-    toast("Account added");
-    dialog.classList.add("hidden");
-    await loadAccounts();
-    refreshCodes();
-  } catch (e) {
-    toast(typeof e === "string" ? e : "Failed to add account", true);
+
+  if (editId) {
+    // Edit mode — only require issuer + label; secret is optional
+    if (!issuer || !label) {
+      toast("Issuer and label are required", true);
+      return;
+    }
+    try {
+      await invoke("update_account", {
+        accountId: editId,
+        issuer: issuer || null,
+        label: label || null,
+        sortOrder: null,
+      });
+      toast("Account updated");
+      editId = null;
+      dialog.classList.add("hidden");
+      await loadAccounts();
+      refreshCodes();
+    } catch (e) {
+      toast(typeof e === "string" ? e : "Failed to update account", true);
+    }
+  } else {
+    // Add mode — all fields required
+    if (!issuer || !label || !secret) {
+      toast("All fields required", true);
+      return;
+    }
+    try {
+      await invoke("add_account", {
+        issuer,
+        label,
+        secret,
+        algorithm: dialogAlgorithm.value,
+        digits: parseInt(dialogDigits.value),
+        period: parseInt(dialogPeriod.value),
+      });
+      toast("Account added");
+      dialog.classList.add("hidden");
+      await loadAccounts();
+      refreshCodes();
+    } catch (e) {
+      toast(typeof e === "string" ? e : "Failed to add account", true);
+    }
   }
 });
 
@@ -317,7 +459,6 @@ qrCancel.addEventListener("click", () => {
   qrOverlay.classList.add("hidden");
 });
 
-// Paste QR image handler
 document.addEventListener("paste", async (e) => {
   if (qrOverlay.classList.contains("hidden")) return;
   const items = e.clipboardData?.items;
@@ -363,11 +504,135 @@ btnTheme.addEventListener("click", async () => {
   cfg.theme = cfg.theme === "light" ? "dark" : "light";
   await invoke("save_config", { cfg });
   applyTheme(cfg.theme);
-  if (cfg.theme === "light") {
-    toast("Light theme");
-  } else {
-    toast("Dark theme");
+  toast(cfg.theme === "light" ? "Light theme" : "Dark theme");
+});
+
+// ── Settings / PIN dialog ──────────────────────────────────
+btnSettings.addEventListener("click", async () => {
+  try {
+    const cfg = await invoke("load_config");
+    const hasPin = cfg.password_protected;
+
+    settingsTitle.textContent = "Settings";
+    let html = "";
+
+    if (hasPin) {
+      html += `
+        <div class="settings-section">
+          <h3>Change PIN</h3>
+          <input type="password" id="pin-old" placeholder="Current PIN" spellcheck="false" autocomplete="off" />
+          <input type="password" id="pin-new" placeholder="New PIN" spellcheck="false" autocomplete="off" />
+          <input type="password" id="pin-confirm" placeholder="Confirm new PIN" spellcheck="false" autocomplete="off" />
+          <div class="settings-error hidden" id="pin-error"></div>
+          <button class="settings-btn primary" id="pin-change-btn">Change PIN</button>
+        </div>
+        <div class="settings-section">
+          <h3>Security</h3>
+          <button class="settings-btn danger" id="pin-lock-now">Lock Now</button>
+        </div>
+      `;
+    } else {
+      html += `
+        <div class="settings-section">
+          <h3>Set PIN</h3>
+          <input type="password" id="pin-new" placeholder="New PIN" spellcheck="false" autocomplete="off" />
+          <input type="password" id="pin-confirm" placeholder="Confirm new PIN" spellcheck="false" autocomplete="off" />
+          <div class="settings-error hidden" id="pin-error"></div>
+          <button class="settings-btn primary" id="pin-set-btn">Set PIN</button>
+        </div>
+      `;
+    }
+
+    html += `
+      <div class="settings-section">
+        <h3>Backup</h3>
+        <p style="font-size:12px;color:var(--btn-color);margin-bottom:4px;">Find <code>.auth</code> file next to the app .exe</p>
+        <p style="font-size:11px;color:var(--btn-color);line-height:1.4;">To export: copy the <code>.auth</code> file to a safe location.<br>To import: replace the <code>.auth</code> file and restart.</p>
+      </div>
+      <div class="settings-section">
+        <h3>Auto-Lock</h3>
+        <p style="font-size:12px;color:var(--btn-color);margin-bottom:4px;">Lock after ${lockTimeoutMinutes} min of inactivity</p>
+      </div>
+    `;
+
+    settingsBody.innerHTML = html;
+    settingsOverlay.classList.remove("hidden");
+
+    // Pin the event handlers
+    const pinError = document.getElementById("pin-error");
+
+    if (hasPin) {
+      document.getElementById("pin-change-btn").addEventListener("click", async () => {
+        const oldPin = document.getElementById("pin-old").value;
+        const newPin = document.getElementById("pin-new").value;
+        const confirm = document.getElementById("pin-confirm").value;
+        if (!oldPin || !newPin || !confirm) {
+          pinError.textContent = "All fields required";
+          pinError.classList.remove("hidden");
+          return;
+        }
+        if (newPin !== confirm) {
+          pinError.textContent = "New PINs don't match";
+          pinError.classList.remove("hidden");
+          return;
+        }
+        try {
+          await invoke("change_pin", { oldPin, newPin });
+          toast("PIN changed");
+          settingsOverlay.classList.add("hidden");
+        } catch (e) {
+          pinError.textContent = typeof e === "string" ? e : "Failed to change PIN";
+          pinError.classList.remove("hidden");
+        }
+      });
+
+      document.getElementById("pin-lock-now").addEventListener("click", async () => {
+        try {
+          await invoke("lock");
+          locked = true;
+          stopCountdown();
+          stopAutoLock();
+          settingsOverlay.classList.add("hidden");
+          showLock();
+        } catch (e) {
+          toast("Lock failed", true);
+        }
+      });
+    } else {
+      document.getElementById("pin-set-btn").addEventListener("click", async () => {
+        const newPin = document.getElementById("pin-new").value;
+        const confirm = document.getElementById("pin-confirm").value;
+        if (!newPin || !confirm) {
+          pinError.textContent = "All fields required";
+          pinError.classList.remove("hidden");
+          return;
+        }
+        if (newPin !== confirm) {
+          pinError.textContent = "PINs don't match";
+          pinError.classList.remove("hidden");
+          return;
+        }
+        try {
+          await invoke("set_lock", { pin: newPin });
+          passwordProtected = true;
+          toast("PIN set — app is now protected");
+          settingsOverlay.classList.add("hidden");
+          startAutoLock();
+        } catch (e) {
+          pinError.textContent = typeof e === "string" ? e : "Failed to set PIN";
+          pinError.classList.remove("hidden");
+        }
+      });
+    }
+
+    // Backup — manual instructions shown in the HTML, no buttons needed
+  } catch (e) {
+    toast("Failed to load settings", true);
   }
+});
+
+settingsCancel.addEventListener("click", () => {
+  settingsOverlay.classList.add("hidden");
 });
 
 // ── Titlebar buttons ───────────────────────────────────────
@@ -424,13 +689,14 @@ async function trackWindow() {
 
 // ── Keyboard shortcuts ─────────────────────────────────────
 document.addEventListener("keydown", async (e) => {
-  // Don't trigger shortcuts when typing in inputs (except search)
   if (e.target.tagName === "INPUT" && e.target.id !== "search") return;
   if (e.target.tagName === "SELECT") return;
 
   if (e.key === "Escape") {
     dialog.classList.add("hidden");
     qrOverlay.classList.add("hidden");
+    settingsOverlay.classList.add("hidden");
+    hideContextMenu();
     stopCamera();
     searchInput.blur();
   }
@@ -448,6 +714,7 @@ document.addEventListener("keydown", async (e) => {
         await invoke("lock");
         locked = true;
         stopCountdown();
+        stopAutoLock();
         showLock();
       } catch (_) {}
     }
@@ -464,13 +731,16 @@ document.addEventListener("keydown", async (e) => {
     const cfg = await invoke("load_config");
     btnPin.classList.toggle("active", cfg.always_on_top);
     applyTheme(cfg.theme || detectSystemTheme());
+    lockTimeoutMinutes = cfg.lock_timeout_minutes || 5;
+    passwordProtected = cfg.password_protected;
 
     await checkLock();
     if (!locked) {
       await loadAccounts();
       startCountdown();
+      startAutoLock();
     }
-    // Save config on close
+
     window.addEventListener("beforeunload", async () => {
       try {
         const cfg = await invoke("load_config");

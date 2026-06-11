@@ -39,6 +39,7 @@
         <input type="text" id="search" placeholder="Search accounts..." />
         <button id="btn-theme" title="Toggle theme">🌓</button>
         <button id="btn-add" title="Add Account (Ctrl+N)">+</button>
+        <button id="btn-settings" title="Settings">⚙</button>
       </div>
 
       <!-- Account list -->
@@ -93,6 +94,25 @@
 
       <!-- Toast bar -->
       <div id="toast-bar" class="hidden"></div>
+
+      <!-- PIN / Settings dialog -->
+      <div id="settings-overlay" class="hidden">
+        <div id="settings-card">
+          <h2 id="settings-title">Settings</h2>
+          <div id="settings-body">
+            <!-- PIN section: dynamically filled -->
+          </div>
+          <div class="dialog-actions">
+            <button id="settings-cancel">Close</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right-click context menu -->
+      <div id="context-menu" class="hidden">
+        <div class="ctx-item" data-action="edit">✎ Edit</div>
+        <div class="ctx-item ctx-delete" data-action="delete">✕ Delete</div>
+      </div>
 
       <!-- QR Scanner overlay -->
       <div id="qr-overlay" class="hidden">

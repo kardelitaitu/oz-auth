@@ -147,7 +147,8 @@ body.theme-dark, body:not(.theme-light) {
 }
 
 #btn-theme,
-#btn-add {
+#btn-add,
+#btn-settings {
   width: 32px;
   height: 32px;
   border: 1px solid var(--input-border);
@@ -163,7 +164,8 @@ body.theme-dark, body:not(.theme-light) {
 }
 
 #btn-theme:hover,
-#btn-add:hover {
+#btn-add:hover,
+#btn-settings:hover {
   background: var(--btn-hover-bg);
 }
 
@@ -549,6 +551,179 @@ body.theme-dark, body:not(.theme-light) {
 
 .dialog-scan-btn:hover {
   background: var(--btn-hover-bg);
+}
+
+/* === Settings / PIN dialog === */
+#settings-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-bg);
+  z-index: 100;
+  backdrop-filter: blur(6px);
+}
+
+#settings-overlay.hidden {
+  display: none;
+}
+
+#settings-card {
+  background: var(--dialog-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 8px;
+  padding: 20px;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+#settings-title {
+  font-size: 16px;
+  font-weight: 600;
+}
+
+#settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-section {
+  border-top: 1px solid var(--card-border);
+  padding-top: 8px;
+}
+
+.settings-section h3 {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  color: var(--btn-color);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.settings-btn {
+  width: 100%;
+  padding: 8px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: background 0.1s;
+  text-align: center;
+}
+
+.settings-btn:hover {
+  background: var(--btn-hover-bg);
+}
+
+.settings-btn.primary {
+  background: var(--code-color);
+  border: none;
+  color: var(--bg);
+  font-weight: 600;
+}
+
+.settings-btn.primary:hover {
+  opacity: 0.85;
+}
+
+.settings-btn.danger {
+  border-color: var(--close-bg);
+  color: var(--close-bg);
+}
+
+.settings-btn.danger:hover {
+  background: var(--close-bg);
+  color: #fff;
+}
+
+#settings-card input {
+  padding: 8px 10px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 13px;
+  outline: none;
+  font-family: inherit;
+}
+
+#settings-card input:focus {
+  border-color: var(--code-color);
+}
+
+.settings-error {
+  font-size: 12px;
+  color: var(--close-bg);
+  text-align: center;
+}
+
+/* === Context menu === */
+#context-menu {
+  position: fixed;
+  z-index: 9999;
+  background: var(--dialog-bg);
+  border: 1px solid var(--card-border);
+  border-radius: 6px;
+  padding: 4px 0;
+  min-width: 140px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+
+#context-menu.hidden {
+  display: none;
+}
+
+.ctx-item {
+  padding: 8px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.08s;
+  user-select: none;
+}
+
+.ctx-item:hover {
+  background: var(--btn-hover-bg);
+}
+
+.ctx-delete {
+  color: var(--close-bg);
+}
+
+.ctx-delete:hover {
+  background: var(--close-bg);
+  color: #fff;
+}
+
+/* === Card edit button === */
+.card-edit {
+  background: none;
+  border: none;
+  color: var(--btn-color);
+  font-size: 15px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  opacity: 0.5;
+  transition: opacity 0.1s, color 0.1s;
+}
+
+.card-edit:hover {
+  opacity: 1;
+  color: var(--code-color);
+}
+
+.card-header-buttons {
+  display: flex;
+  gap: 2px;
+  align-items: center;
 }
 
 /* === Toast === */
