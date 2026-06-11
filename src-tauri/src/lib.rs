@@ -7,6 +7,7 @@ pub mod diagnostics;
 pub mod models;
 pub mod paths;
 pub mod storage;
+pub mod tray;
 pub mod utils;
 
 use std::sync::Mutex;
@@ -59,6 +60,11 @@ fn load_config() -> Result<crate::config::Config, String> {
 }
 
 #[tauri::command]
+fn update_tray_icon(pct: f64, app: tauri::AppHandle) {
+    tray::update_icon(&app, pct);
+}
+
+#[tauri::command]
 fn save_config(cfg: crate::config::Config) -> Result<(), String> {
     let mut data = crate::storage::try_load()?;
     let mut merged = cfg;
@@ -89,6 +95,7 @@ pub fn run() {
         .manage(AppState {
             encryption_key: Mutex::new(None),
         })
+        .manage(tray::TrayState::<tauri::Wry>::new())
         .setup(|app| {
             let data = crate::storage::load();
             let cfg = data.config;
@@ -109,12 +116,17 @@ pub fn run() {
                 let _ = window.set_focus();
                 let _ = window.set_title(&exe_name);
             }
+
+            // Build system tray
+            let _ = tray::build(app.handle(), &exe_name);
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             get_app_name,
             load_config,
             save_config,
+            update_tray_icon,
             commands::totp::generate_code,
             commands::totp::generate_all_codes,
             commands::accounts::add_account,

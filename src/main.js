@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { startCamera, stopCamera, scanImage } from "./js/qr-scanner.js";
 
 // ── DOM refs ──────────────────────────────────────────────
 const titleText = document.getElementById("title-text");
@@ -23,6 +24,9 @@ const dialogDigits = document.getElementById("dialog-digits");
 const dialogPeriod = document.getElementById("dialog-period");
 const dialogSubmit = document.getElementById("dialog-submit");
 const dialogCancel = document.getElementById("dialog-cancel");
+const dialogScan = document.getElementById("dialog-scan");
+const qrOverlay = document.getElementById("qr-overlay");
+const qrCancel = document.getElementById("qr-cancel");
 
 // ── State ──────────────────────────────────────────────────
 let accounts = [];
@@ -162,14 +166,25 @@ function startCountdown() {
   refreshCodes();
   countdownInterval = setInterval(() => {
     let needsRefresh = true;
+    let totalPct = 0;
+    let count = 0;
     for (const id in secondsRemaining) {
       secondsRemaining[id]--;
       if (secondsRemaining[id] <= 0) {
         delete secondsRemaining[id];
         needsRefresh = true;
       }
+      const a = accounts.find((a) => a.id === id);
+      if (a && secondsRemaining[id] !== undefined) {
+        totalPct += ((a.period - secondsRemaining[id]) / a.period) * 100;
+        count++;
+      }
     }
     updateBars();
+    // Update tray icon with average countdown progress
+    if (count > 0) {
+      invoke("update_tray_icon", { pct: totalPct / count }).catch(() => {});
+    }
     if (needsRefresh) refreshCodes();
   }, 1000);
 }
@@ -262,6 +277,57 @@ dialogSubmit.addEventListener("click", async () => {
     refreshCodes();
   } catch (e) {
     toast(typeof e === "string" ? e : "Failed to add account", true);
+  }
+});
+
+// ── QR Scanner ─────────────────────────────────────────────
+dialogScan.addEventListener("click", async () => {
+  qrOverlay.classList.remove("hidden");
+  try {
+    await startCamera(async (uri) => {
+      qrOverlay.classList.add("hidden");
+      try {
+        const account = await invoke("add_account_from_uri", { otpauthUri: uri });
+        toast("Account added from QR");
+        dialog.classList.add("hidden");
+        await loadAccounts();
+        refreshCodes();
+      } catch (e) {
+        toast(typeof e === "string" ? e : "Failed to add from QR", true);
+      }
+    });
+  } catch (e) {
+    qrOverlay.classList.add("hidden");
+    toast(typeof e === "string" ? e : "Camera access denied", true);
+  }
+});
+
+qrCancel.addEventListener("click", () => {
+  stopCamera();
+  qrOverlay.classList.add("hidden");
+});
+
+// Paste QR image handler
+document.addEventListener("paste", async (e) => {
+  if (qrOverlay.classList.contains("hidden")) return;
+  const items = e.clipboardData?.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith("image/")) {
+      e.preventDefault();
+      try {
+        const uri = await scanImage(item.getAsFile());
+        qrOverlay.classList.add("hidden");
+        stopCamera();
+        const account = await invoke("add_account_from_uri", { otpauthUri: uri });
+        toast("Account added from QR");
+        dialog.classList.add("hidden");
+        await loadAccounts();
+        refreshCodes();
+      } catch (err) {
+        toast("No QR code found in image", true);
+      }
+    }
   }
 });
 

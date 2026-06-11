@@ -82,6 +82,7 @@
               <option value="60">60s</option>
             </select>
           </div>
+          <button id="dialog-scan" class="dialog-scan-btn">📷 Scan QR Code</button>
           <div class="dialog-actions">
             <button id="dialog-cancel">Cancel</button>
             <button id="dialog-submit">Add</button>
@@ -91,6 +92,19 @@
 
       <!-- Toast bar -->
       <div id="toast-bar" class="hidden"></div>
+
+      <!-- QR Scanner overlay -->
+      <div id="qr-overlay" class="hidden">
+        <div id="qr-card">
+          <h2>Scan QR Code</h2>
+          <div id="qr-video-container">
+            <video id="qr-video" autoplay playsinline></video>
+            <div id="qr-frame"></div>
+          </div>
+          <p id="qr-hint">Point camera at a QR code<br>or paste an image (Ctrl+V)</p>
+          <button id="qr-cancel">Cancel</button>
+        </div>
+      </div>
     </div>
 
     <script type="module" src="/src/main.js"></script>
