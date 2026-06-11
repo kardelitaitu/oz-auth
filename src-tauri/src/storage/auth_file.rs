@@ -355,4 +355,87 @@ mod tests {
         }
         decrypted.clear();
     }
+
+    #[test]
+    fn test_stress_encrypt_decrypt_100_accounts() {
+        let key = [0x42u8; 32];
+        let now = chrono::Utc::now();
+
+        // Build 100 accounts with deterministic-but-unique secrets and varied params
+        let mut accounts = Vec::with_capacity(100);
+        for i in 0u8..100u8 {
+            let algo = match i % 3 {
+                0 => crate::models::account::Algorithm::SHA1,
+                1 => crate::models::account::Algorithm::SHA256,
+                _ => crate::models::account::Algorithm::SHA512,
+            };
+            let digits = if i % 2 == 0 { 6 } else { 8 };
+            let period = match i % 3 {
+                0 => 30u32,
+                1 => 60,
+                _ => 90,
+            };
+            // Each account gets a unique secret: [i, i+1, i+2, ... i+9] (10 bytes)
+            let secret: Vec<u8> = (0u8..10).map(|j| i.wrapping_add(j)).collect();
+            accounts.push(Account {
+                id: format!("stress-{i:03}"),
+                issuer: format!("Issuer{i}"),
+                label: format!("user{i}@example.com"),
+                algorithm: algo,
+                digits,
+                period,
+                secret: secret.clone(),
+                sort_order: i as u32,
+                created_at: now,
+                updated_at: now,
+            });
+        }
+
+        // Encrypt all 100
+        let payload = encrypt_accounts(&accounts, &key).unwrap();
+        assert!(payload.encrypted);
+        assert!(payload.nonce_hex.is_some());
+        assert!(payload.ciphertext_hex.is_some());
+        assert!(payload.data_json.is_empty());
+
+        // Decrypt all 100
+        let mut decrypted = decrypt_accounts(&payload, &key).unwrap();
+        assert_eq!(decrypted.len(), 100, "all 100 accounts recovered");
+
+        // Verify every field on every account
+        for (i, a) in decrypted.iter().enumerate() {
+            let expected_id = format!("stress-{i:03}");
+            assert_eq!(a.id, expected_id, "id mismatch at index {i}");
+            assert_eq!(a.issuer, format!("Issuer{i}"), "issuer mismatch at index {i}");
+            assert_eq!(a.label, format!("user{i}@example.com"), "label mismatch at index {i}");
+
+            // Verify secret survived encrypt→decrypt cycle
+            let expected_secret: Vec<u8> = (0u8..10).map(|j| (i as u8).wrapping_add(j)).collect();
+            assert_eq!(a.secret, expected_secret, "secret mismatch at index {i}");
+
+            assert_eq!(a.sort_order, i as u32);
+
+            // Verify digits and period survived the encrypt→decrypt cycle
+            let expected_digits = if i % 2 == 0 { 6u8 } else { 8u8 };
+            assert_eq!(a.digits, expected_digits, "digits mismatch at index {i}");
+            let expected_period = match i % 3 {
+                0 => 30u32,
+                1 => 60,
+                _ => 90,
+            };
+            assert_eq!(a.period, expected_period, "period mismatch at index {i}");
+
+            match i % 3 {
+                0 => assert!(matches!(a.algorithm, crate::models::account::Algorithm::SHA1)),
+                1 => assert!(matches!(a.algorithm, crate::models::account::Algorithm::SHA256)),
+                _ => assert!(matches!(a.algorithm, crate::models::account::Algorithm::SHA512)),
+            }
+        }
+
+        // Zeroize all secrets
+        for a in &mut decrypted {
+            a.secret.zeroize();
+        }
+        decrypted.clear();
+    }
 }
