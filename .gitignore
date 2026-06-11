@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+src-tauri/target/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# App data files (user data, no .auth files in repo)
+*.auth
+*.crash
+*.notes
+
+# Reference / example projects (not part of our app)
+sticky-notes-rust-example/
+
+# Environment
+.env
+.env.local
