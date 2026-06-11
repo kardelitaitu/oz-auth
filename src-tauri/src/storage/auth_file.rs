@@ -5,10 +5,15 @@
 //! ```json
 //! { "version": 1, "config": {...}, "accounts": {...}, "log": "..." }
 //! ```
+//!
+//! # Memory security
+//! All plaintext serialized JSON and decrypted buffers are zeroized
+//! after use to prevent secret recovery from memory dumps.
 
 use crate::crypto;
 use crate::models::account::Account;
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroize;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthData {
@@ -80,9 +85,11 @@ pub fn save(data: &AuthData) -> Result<(), String> {
 }
 
 pub fn encrypt_accounts(accounts: &[Account], key: &[u8; 32]) -> Result<AccountsPayload, String> {
-    let json = serde_json::to_string(accounts)
+    let mut json = serde_json::to_string(accounts)
         .map_err(|e| format!("failed to serialize accounts: {e}"))?;
     let (nonce, ciphertext) = crypto::encrypt(&json, key)?;
+    // Zeroize the plaintext JSON immediately after encryption
+    json.zeroize();
     Ok(AccountsPayload {
         encrypted: true,
         nonce_hex: Some(hex::encode(&nonce)),
@@ -101,16 +108,23 @@ pub fn decrypt_accounts(payload: &AccountsPayload, key: &[u8; 32]) -> Result<Vec
         .ok_or_else(|| "missing nonce_hex in encrypted accounts".to_string())?;
     let ct_hex = payload.ciphertext_hex.as_deref()
         .ok_or_else(|| "missing ciphertext_hex in encrypted accounts".to_string())?;
-    let nonce = hex::decode(nonce_hex)
+    let mut nonce = hex::decode(nonce_hex)
         .map_err(|e| format!("invalid nonce hex: {e}"))?;
-    let ciphertext = hex::decode(ct_hex)
+    let mut ciphertext = hex::decode(ct_hex)
         .map_err(|e| format!("invalid ciphertext hex: {e}"))?;
-    let plaintext = crypto::decrypt(&ciphertext, &nonce, key)?;
-    serde_json::from_str(&plaintext)
-        .map_err(|e| format!("failed to parse decrypted accounts: {e}"))
+    let mut plaintext = crypto::decrypt(&ciphertext, &nonce, key)?;
+    let accounts: Vec<Account> = serde_json::from_str(&plaintext)
+        .map_err(|e| format!("failed to parse decrypted accounts: {e}"))?;
+    // Zeroize all intermediate buffers
+    nonce.zeroize();
+    ciphertext.zeroize();
+    plaintext.zeroize();
+    Ok(accounts)
 }
 
 /// Load accounts from AuthData, handling both encrypted and plaintext.
+///
+/// Caller is responsible for zeroizing the returned Vec<Account> after use.
 pub fn load_accounts(
     data: &AuthData,
     key: Option<[u8; 32]>,
@@ -143,19 +157,16 @@ fn fresh() -> AuthData {
 fn reconcile_invariants(data: &mut AuthData) -> bool {
     let mut changed = false;
 
-    // Encrypted content must stay in protected mode
     if data.accounts.encrypted && !data.config.password_protected {
         data.config.password_protected = true;
         changed = true;
     }
 
-    // Plaintext content must not stay in protected mode
     if !data.accounts.encrypted && data.config.password_protected {
         data.config.password_protected = false;
         changed = true;
     }
 
-    // Remove stale salt when protection is disabled
     if !data.config.password_protected && !data.config.password_salt.is_empty() {
         data.config.password_salt.clear();
         changed = true;
@@ -193,9 +204,14 @@ mod tests {
         }];
         let payload = encrypt_accounts(&accounts, &key).unwrap();
         assert!(payload.encrypted);
-        let decrypted = decrypt_accounts(&payload, &key).unwrap();
+        let mut decrypted = decrypt_accounts(&payload, &key).unwrap();
         assert_eq!(decrypted.len(), 1);
         assert_eq!(decrypted[0].id, "test-id");
+        // Zeroize decrypted accounts
+        for a in &mut decrypted {
+            a.secret.zeroize();
+        }
+        decrypted.clear();
     }
 
     #[test]
