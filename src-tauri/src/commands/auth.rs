@@ -401,6 +401,136 @@ mod tests {
         });
     }
 
+    // ── Full PIN lifecycle ──────────────────────────────────
+
+    #[test]
+    fn test_full_pin_lifecycle() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            use crate::models::account::{Account, Algorithm};
+
+            // 1. Add accounts without PIN (plaintext storage)
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![
+                Account {
+                    id: "acct-1".into(), issuer: "Google".into(), label: "user@gmail.com".into(),
+                    algorithm: Algorithm::SHA1, digits: 6, period: 30,
+                    secret: vec![1, 2, 3, 4, 5], sort_order: 0,
+                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                },
+                Account {
+                    id: "acct-2".into(), issuer: "GitHub".into(), label: "dev@github.com".into(),
+                    algorithm: Algorithm::SHA256, digits: 6, period: 30,
+                    secret: vec![6, 7, 8], sort_order: 1,
+                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                },
+            ];
+            data.accounts.data_json = serde_json::to_string(&accounts).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            // Verify accounts are plaintext and accessible
+            let loaded = crate::storage::try_load().unwrap();
+            assert!(!loaded.config.password_protected, "no PIN set yet");
+            assert!(!loaded.accounts.data_json.is_empty(), "accounts in plaintext");
+            assert!(!loaded.accounts.encrypted, "accounts not encrypted");
+            let mut reloaded = crate::storage::load_accounts(&loaded, None).unwrap();
+            assert_eq!(reloaded.len(), 2);
+            assert_eq!(reloaded[0].issuer, "Google");
+            assert_eq!(reloaded[1].issuer, "GitHub");
+            for a in &mut reloaded { a.secret.zeroize(); }
+            reloaded.clear();
+
+            // 2. Set PIN — accounts should become encrypted
+            let original_salt = crypto::generate_salt();
+            let original_salt_hex = hex::encode(original_salt);
+            let mut key = crypto::derive_key("mypin123", &original_salt).unwrap();
+            data = crate::storage::try_load().unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = original_salt_hex.clone();
+            crate::storage::save(&data).unwrap();
+            state.set_key(key).unwrap();
+            key.zeroize();
+
+            let loaded = crate::storage::try_load().unwrap();
+            assert!(loaded.config.password_protected, "password_protected flag set");
+            assert!(loaded.accounts.encrypted, "accounts encrypted");
+            assert_eq!(loaded.config.password_salt, original_salt_hex, "salt stored");
+
+            // 3. Lock — clear the key
+            state.clear_key().unwrap();
+            assert!(!state.has_key());
+            // Without key, accounts can't be loaded
+            assert!(crate::storage::load_accounts(&loaded, None).is_err());
+
+            // 4. Try unlock with wrong PIN → fails
+            let loaded_salt = hex::decode(&loaded.config.password_salt).unwrap();
+            let mut wrong_key = crypto::derive_key("wrongpin", &loaded_salt).unwrap();
+            let result = crate::storage::decrypt_accounts(&loaded.accounts, &wrong_key);
+            assert!(result.is_err(), "wrong PIN must fail decryption");
+            wrong_key.zeroize();
+
+            // 5. Unlock with right PIN → succeeds, accounts decrypted
+            let mut right_key = crypto::derive_key("mypin123", &loaded_salt).unwrap();
+            let mut decrypted = crate::storage::decrypt_accounts(&loaded.accounts, &right_key).unwrap();
+            assert_eq!(decrypted.len(), 2, "both accounts recovered");
+            assert_eq!(decrypted[0].issuer, "Google");
+            assert_eq!(decrypted[0].label, "user@gmail.com");
+            assert_eq!(decrypted[1].issuer, "GitHub");
+            assert_eq!(decrypted[1].secret, vec![6, 7, 8], "secret preserved");
+            state.set_key(right_key).unwrap();
+            right_key.zeroize();
+            for a in &mut decrypted { a.secret.zeroize(); }
+            decrypted.clear();
+
+            // 6. Change PIN from "mypin123" to "newpin456"
+            let mut old_key = crypto::derive_key("mypin123", &loaded_salt).unwrap();
+            let mut decrypted = crate::storage::decrypt_accounts(&data.accounts, &old_key).unwrap();
+            assert_eq!(decrypted.len(), 2, "decrypted before change_pin");
+            let new_salt = crypto::generate_salt();
+            let new_salt_hex = hex::encode(new_salt);
+            // Salt must rotate on PIN change
+            assert_ne!(new_salt_hex, original_salt_hex, "salt rotates on PIN change");
+            let mut new_key = crypto::derive_key("newpin456", &new_salt).unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&decrypted, &new_key).unwrap();
+            data.config.password_salt = new_salt_hex;
+            crate::storage::save(&data).unwrap();
+            state.set_key(new_key).unwrap();
+            old_key.zeroize();
+            new_key.zeroize();
+            for a in &mut decrypted { a.secret.zeroize(); }
+            decrypted.clear();
+
+            // 7. Lock again
+            state.clear_key().unwrap();
+            assert!(!state.has_key());
+
+            // 8. Old PIN should fail after change (use current salt from reloaded file)
+            let loaded = crate::storage::try_load().unwrap();
+            assert!(loaded.config.password_protected, "still password protected");
+            assert_ne!(loaded.config.password_salt, original_salt_hex, "salt changed on disk");
+            let current_salt = hex::decode(&loaded.config.password_salt).unwrap();
+            let mut old_key = crypto::derive_key("mypin123", &current_salt).unwrap();
+            let result = crate::storage::decrypt_accounts(&loaded.accounts, &old_key);
+            assert!(result.is_err(), "old PIN must fail after change_pin");
+            old_key.zeroize();
+
+            // 9. New PIN should work
+            let mut new_key = crypto::derive_key("newpin456", &current_salt).unwrap();
+            let mut decrypted = crate::storage::decrypt_accounts(&loaded.accounts, &new_key).unwrap();
+            assert_eq!(decrypted.len(), 2);
+            assert_eq!(decrypted[0].issuer, "Google");
+            assert_eq!(decrypted[1].issuer, "GitHub");
+            assert_eq!(decrypted[1].secret, vec![6, 7, 8], "secret preserved after full cycle");
+            new_key.zeroize();
+            for a in &mut decrypted { a.secret.zeroize(); }
+            decrypted.clear();
+
+            cleanup_auth_file();
+        });
+    }
+
     // ── corrupted auth file ──────────────────────────────────
 
     #[test]
