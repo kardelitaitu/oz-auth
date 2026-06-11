@@ -45,6 +45,10 @@ pub struct AccountsPayload {
 
 const CURRENT_VERSION: u32 = 1;
 
+/// Mutex that serializes tests touching the shared `.auth` file.
+#[cfg(test)]
+pub static FS_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 // ── Public API ──────────────────────────────────────────────
 
 pub fn auth_path() -> std::path::PathBuf {
@@ -178,18 +182,8 @@ fn reconcile_invariants(data: &mut AuthData) -> bool {
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_fresh_defaults() {
-        let data = fresh();
-        assert_eq!(data.version, 1);
-        assert!(!data.config.password_protected);
-        assert!(!data.accounts.encrypted);
-    }
-
-    #[test]
-    fn test_encrypt_decrypt_roundtrip() {
-        let key = [0xABu8; 32];
-        let accounts = vec![Account {
+    fn test_account() -> Account {
+        Account {
             id: "test-id".into(),
             issuer: "Test".into(),
             label: "test@test.com".into(),
@@ -200,9 +194,29 @@ mod tests {
             sort_order: 0,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
-        }];
+        }
+    }
+
+    #[test]
+    fn test_fresh_defaults() {
+        let data = fresh();
+        assert_eq!(data.version, 1);
+        assert!(!data.config.password_protected);
+        assert!(!data.accounts.encrypted);
+        assert!(data.accounts.data_json.is_empty());
+        assert!(data.accounts.nonce_hex.is_none());
+        assert!(data.accounts.ciphertext_hex.is_none());
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_roundtrip() {
+        let key = [0xABu8; 32];
+        let accounts = vec![test_account()];
         let payload = encrypt_accounts(&accounts, &key).unwrap();
         assert!(payload.encrypted);
+        assert!(payload.nonce_hex.is_some());
+        assert!(payload.ciphertext_hex.is_some());
+        assert!(payload.data_json.is_empty());
         let mut decrypted = decrypt_accounts(&payload, &key).unwrap();
         assert_eq!(decrypted.len(), 1);
         assert_eq!(decrypted[0].id, "test-id");
@@ -220,5 +234,125 @@ mod tests {
         let restored: AuthData = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.version, 1);
         assert!(!restored.config.password_protected);
+    }
+
+    #[test]
+    fn test_decrypt_wrong_key_fails() {
+        let key = [0xAAu8; 32];
+        let wrong_key = [0xBBu8; 32];
+        let accounts = vec![test_account()];
+        let payload = encrypt_accounts(&accounts, &key).unwrap();
+        assert!(decrypt_accounts(&payload, &wrong_key).is_err());
+    }
+
+    #[test]
+    fn test_decrypt_plaintext_payload() {
+        let key = [0xCCu8; 32];
+        let plaintext = AccountsPayload {
+            encrypted: false,
+            nonce_hex: None,
+            ciphertext_hex: None,
+            data_json: serde_json::to_string(&vec![test_account()]).unwrap(),
+        };
+        let mut accounts = decrypt_accounts(&plaintext, &key).unwrap();
+        assert_eq!(accounts.len(), 1);
+        assert_eq!(accounts[0].id, "test-id");
+        for a in &mut accounts {
+            a.secret.zeroize();
+        }
+        accounts.clear();
+    }
+
+    #[test]
+    fn test_reconcile_invariants_encrypted_but_not_protected() {
+        let mut data = fresh();
+        data.accounts.encrypted = true;
+        data.config.password_protected = false;
+        assert!(reconcile_invariants(&mut data));
+        assert!(data.config.password_protected);
+    }
+
+    #[test]
+    fn test_reconcile_invariants_protected_but_not_encrypted() {
+        let mut data = fresh();
+        data.accounts.encrypted = false;
+        data.config.password_protected = true;
+        assert!(reconcile_invariants(&mut data));
+        assert!(!data.config.password_protected);
+    }
+
+    #[test]
+    fn test_reconcile_invariants_salt_cleared_when_unprotected() {
+        let mut data = fresh();
+        data.config.password_salt = "old-salt".into();
+        reconcile_invariants(&mut data);
+        assert!(data.config.password_salt.is_empty());
+    }
+
+    #[test]
+    fn test_reconcile_invariants_no_change() {
+        let mut data = fresh();
+        assert!(!reconcile_invariants(&mut data));
+    }
+
+    #[test]
+    fn test_load_accounts_encrypted_without_key_fails() {
+        let key = [0xDDu8; 32];
+        let accounts = vec![test_account()];
+        let payload = encrypt_accounts(&accounts, &key).unwrap();
+        let data = AuthData {
+            version: 1,
+            config: crate::config::Config::default(),
+            accounts: payload,
+            log: String::new(),
+        };
+        assert!(load_accounts(&data, None).is_err());
+    }
+
+    #[test]
+    fn test_load_accounts_plaintext_without_key_succeeds() {
+        let data = AuthData {
+            version: 1,
+            config: crate::config::Config::default(),
+            accounts: AccountsPayload {
+                encrypted: false,
+                nonce_hex: None,
+                ciphertext_hex: None,
+                data_json: serde_json::to_string(&vec![test_account()]).unwrap(),
+            },
+            log: String::new(),
+        };
+        let mut accounts = load_accounts(&data, None).unwrap();
+        assert_eq!(accounts.len(), 1);
+        for a in &mut accounts {
+            a.secret.zeroize();
+        }
+        accounts.clear();
+    }
+
+    #[test]
+    fn test_encrypt_multiple_accounts() {
+        let key = [0xEEu8; 32];
+        let mut accounts = vec![test_account()];
+        accounts.push(Account {
+            id: "second".into(),
+            issuer: "Org".into(),
+            label: "org@org.com".into(),
+            algorithm: crate::models::account::Algorithm::SHA256,
+            digits: 8,
+            period: 60,
+            secret: vec![9, 8, 7],
+            sort_order: 1,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        });
+        let payload = encrypt_accounts(&accounts, &key).unwrap();
+        let mut decrypted = decrypt_accounts(&payload, &key).unwrap();
+        assert_eq!(decrypted.len(), 2);
+        assert_eq!(decrypted[1].issuer, "Org");
+        for a in &mut decrypted {
+            a.secret.zeroize();
+        }
+        decrypted.clear();
     }
 }

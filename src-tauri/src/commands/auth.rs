@@ -160,3 +160,193 @@ pub fn import_backup(path: String, state: State<'_, AppState>) -> Result<(), Str
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto;
+
+    fn cleanup_auth_file() {
+        let path = crate::paths::auth_path();
+        if path.exists() {
+            let _ = std::fs::remove_file(&path);
+        }
+    }
+
+    fn with_fs_lock(f: impl FnOnce()) {
+        let _lock = crate::storage::auth_file::FS_TEST_MUTEX.lock().unwrap();
+        f();
+    }
+
+    fn test_app_state() -> AppState {
+        AppState { encryption_key: std::sync::Mutex::new(None) }
+    }
+
+    // ── AppState ─────────────────────────────────────────────
+
+    #[test]
+    fn test_appstate_set_and_clear_key() {
+        let state = test_app_state();
+        let key = [0x42u8; 32];
+        assert!(!state.has_key());
+        state.set_key(key).unwrap();
+        assert!(state.has_key());
+        state.clear_key().unwrap();
+        assert!(!state.has_key());
+    }
+
+    #[test]
+    fn test_appstate_get_key_returns_clone() {
+        let state = test_app_state();
+        state.set_key([0x77u8; 32]).unwrap();
+        let cloned = state.get_key().unwrap();
+        assert!(cloned.is_some());
+        // Clone drops without affecting original
+        assert!(state.has_key());
+    }
+
+    // ── set_lock via storage layer ───────────────────────────
+
+    #[test]
+    fn test_set_lock_stores_encrypted_accounts() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+
+            let accounts = vec![crate::models::account::Account {
+                id: "s1".into(), issuer: "S".into(), label: "s".into(),
+                algorithm: crate::models::account::Algorithm::SHA1,
+                digits: 6, period: 30, secret: vec![1, 2, 3], sort_order: 0,
+                created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+            }];
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = serde_json::to_string(&accounts).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let salt = crypto::generate_salt();
+            let mut key = crypto::derive_key("1234", &salt).unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = hex::encode(salt);
+            crate::storage::save(&data).unwrap();
+            state.set_key(key).unwrap();
+            key.zeroize();
+
+            let loaded = crate::storage::try_load().unwrap();
+            assert!(loaded.config.password_protected);
+            assert!(loaded.accounts.encrypted);
+            assert!(!loaded.config.password_salt.is_empty());
+            cleanup_auth_file();
+        });
+    }
+
+    // ── unlock via storage layer ─────────────────────────────
+
+    #[test]
+    fn test_unlock_wrong_pin_via_storage() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            let salt = crypto::generate_salt();
+            let mut key = crypto::derive_key("correct", &salt).unwrap();
+            let accounts: Vec<crate::models::account::Account> = vec![];
+            data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = hex::encode(salt);
+            crate::storage::save(&data).unwrap();
+
+            let loaded = crate::storage::try_load().unwrap();
+            let loaded_salt = hex::decode(&loaded.config.password_salt).unwrap();
+            let mut wrong_key = crypto::derive_key("wrong", &loaded_salt).unwrap();
+            assert!(crate::storage::decrypt_accounts(&loaded.accounts, &wrong_key).is_err());
+            wrong_key.zeroize();
+            key.zeroize();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_unlock_correct_pin_via_storage() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            let salt = crypto::generate_salt();
+            let mut key = crypto::derive_key("mypin", &salt).unwrap();
+            let accounts: Vec<crate::models::account::Account> = vec![];
+            data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = hex::encode(salt);
+            crate::storage::save(&data).unwrap();
+
+            let loaded = crate::storage::try_load().unwrap();
+            let loaded_salt = hex::decode(&loaded.config.password_salt).unwrap();
+            let mut correct_key = crypto::derive_key("mypin", &loaded_salt).unwrap();
+            let mut decrypted = crate::storage::decrypt_accounts(&loaded.accounts, &correct_key).unwrap();
+            assert!(decrypted.is_empty());
+            correct_key.zeroize();
+            decrypted.clear();
+            key.zeroize();
+            cleanup_auth_file();
+        });
+    }
+
+    // ── change_pin via storage layer ─────────────────────────
+
+    #[test]
+    fn test_change_pin_via_storage() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            let salt = crypto::generate_salt();
+            let mut old_key = crypto::derive_key("oldpin", &salt).unwrap();
+            let accounts: Vec<crate::models::account::Account> = vec![];
+            data.accounts = crate::storage::encrypt_accounts(&accounts, &old_key).unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = hex::encode(salt);
+            crate::storage::save(&data).unwrap();
+
+            let mut decrypted = crate::storage::decrypt_accounts(&data.accounts, &old_key).unwrap();
+            let new_salt = crypto::generate_salt();
+            let mut new_key = crypto::derive_key("newpin", &new_salt).unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&decrypted, &new_key).unwrap();
+            data.config.password_salt = hex::encode(new_salt);
+            crate::storage::save(&data).unwrap();
+
+            let loaded = crate::storage::try_load().unwrap();
+            assert!(crate::storage::decrypt_accounts(&loaded.accounts, &old_key).is_err());
+            let loaded_salt = hex::decode(&loaded.config.password_salt).unwrap();
+            let mut new_key2 = crypto::derive_key("newpin", &loaded_salt).unwrap();
+            assert!(crate::storage::decrypt_accounts(&loaded.accounts, &new_key2).is_ok());
+
+            old_key.zeroize();
+            new_key.zeroize();
+            new_key2.zeroize();
+            for a in &mut decrypted { a.secret.zeroize(); }
+            decrypted.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    // ── export backup ────────────────────────────────────────
+
+    #[test]
+    fn test_export_backup_creates_file() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let data = crate::storage::try_load().unwrap();
+            crate::storage::save(&data).unwrap();
+            assert!(crate::paths::auth_path().exists());
+
+            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            export_backup(backup_path.to_string_lossy().to_string()).unwrap();
+            assert!(backup_path.exists());
+
+            let original = std::fs::read_to_string(crate::paths::auth_path()).unwrap();
+            let backup = std::fs::read_to_string(&backup_path).unwrap();
+            assert_eq!(original, backup);
+
+            let _ = std::fs::remove_file(&backup_path);
+            cleanup_auth_file();
+        });
+    }
+}

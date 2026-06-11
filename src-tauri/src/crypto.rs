@@ -92,4 +92,59 @@ mod tests {
         assert_eq!(key.len(), 32);
         key.zeroize();
     }
+
+    #[test]
+    fn test_empty_plaintext_roundtrip() {
+        let salt = generate_salt();
+        let mut key = derive_key("empty", &salt).unwrap();
+        let (nonce, ct) = encrypt("", &key).unwrap();
+        let mut pt = decrypt(&ct, &nonce, &key).unwrap();
+        assert_eq!(pt, "");
+        pt.zeroize();
+        key.zeroize();
+    }
+
+    #[test]
+    fn test_invalid_nonce_length() {
+        let salt = generate_salt();
+        let mut key = derive_key("test", &salt).unwrap();
+        assert!(decrypt(b"data", b"short", &key).is_err());
+        key.zeroize();
+    }
+
+    #[test]
+    fn test_large_plaintext_roundtrip() {
+        let salt = generate_salt();
+        let mut key = derive_key("big", &salt).unwrap();
+        let large = "x".repeat(10_000);
+        let (nonce, ct) = encrypt(&large, &key).unwrap();
+        let mut pt = decrypt(&ct, &nonce, &key).unwrap();
+        assert_eq!(pt, large);
+        pt.zeroize();
+        key.zeroize();
+    }
+
+    #[test]
+    fn test_tampered_ciphertext_fails() {
+        let salt = generate_salt();
+        let mut key = derive_key("tamper", &salt).unwrap();
+        let (nonce, mut ct) = encrypt("secret", &key).unwrap();
+        // Flip a byte
+        ct[0] ^= 0xFF;
+        assert!(decrypt(&ct, &nonce, &key).is_err());
+        key.zeroize();
+    }
+
+    #[test]
+    fn test_different_keys_produce_different_ciphertext() {
+        let salt = generate_salt();
+        let mut key1 = derive_key("pass1", &salt).unwrap();
+        let mut key2 = derive_key("pass2", &salt).unwrap();
+        let (_, ct1) = encrypt("secret", &key1).unwrap();
+        let (_, ct2) = encrypt("secret", &key2).unwrap();
+        // Same plaintext, different keys → different ciphertext
+        assert_ne!(ct1, ct2);
+        key1.zeroize();
+        key2.zeroize();
+    }
 }
