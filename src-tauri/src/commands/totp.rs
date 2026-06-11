@@ -568,4 +568,67 @@ mod tests {
             cleanup_auth_file();
         });
     }
+
+    // ── corrupted secret edge cases ──────────────────────────
+
+    #[test]
+    fn test_generate_code_empty_secret_fails_gracefully() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // Account with an empty secret — totp_rs rejects empty key material
+            let mut account = test_account(b"12345678901234567890", Algorithm::SHA1, 6);
+            account.secret = vec![];
+            seed_plaintext_accounts(&[account]);
+
+            let result = generate_code_impl("test-1", &state);
+            assert!(result.is_err(), "empty secret must produce an error");
+            let err = result.unwrap_err();
+            assert!(err.contains("totp error"), "error should come from make_totp: {err}");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_generate_code_minimum_length_secret_succeeds() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // totp_rs requires the secret to be at least 128 bits (16 bytes).
+            // A 16-byte all-zero key is weak but technically valid for HMAC.
+            let mut account = test_account(b"12345678901234567890", Algorithm::SHA1, 6);
+            account.secret = vec![0x00u8; 16];
+            seed_plaintext_accounts(&[account]);
+
+            let (code, remaining) = generate_code_impl("test-1", &state).unwrap();
+            assert_eq!(code.len(), 6);
+            assert!(code.chars().all(|c| c.is_ascii_digit()));
+            assert!(remaining > 0 && remaining <= 30);
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_generate_all_codes_one_corrupted_secret_poisons_batch() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // Account A has a valid secret, account B has an empty (corrupted) secret
+            let mut a1 = test_account(b"12345678901234567890", Algorithm::SHA1, 6);
+            a1.id = "good".into();
+            let mut a2 = test_account(b"12345678901234567890", Algorithm::SHA1, 6);
+            a2.id = "bad".into();
+            a2.secret = vec![];
+            seed_plaintext_accounts(&[a1, a2]);
+
+            let result = generate_all_codes_impl(&state);
+            // The batch fails entirely because make_totp errors on the corrupted account.
+            // Note: if the good account is processed first, its code IS generated and
+            // pushed to results, but then the bad account fails and the entire function
+            // returns Err — the good code was computed but discarded.
+            assert!(result.is_err(), "corrupted account causes entire batch to fail");
+            assert!(result.unwrap_err().contains("totp"));
+            cleanup_auth_file();
+        });
+    }
 }
