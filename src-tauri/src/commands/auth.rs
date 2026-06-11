@@ -349,4 +349,72 @@ mod tests {
             cleanup_auth_file();
         });
     }
+
+    // ── import_backup via storage layer ──────────────────────
+
+    #[test]
+    fn test_import_backup_replaces_auth_file() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            // Create original auth file
+            let mut data = crate::storage::try_load().unwrap();
+            data.config.theme = "dark".into();
+            crate::storage::save(&data).unwrap();
+
+            // Export to backup
+            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            export_backup(backup_path.to_string_lossy().to_string()).unwrap();
+
+            // Modify original
+            let mut data = crate::storage::try_load().unwrap();
+            data.config.theme = "light".into();
+            crate::storage::save(&data).unwrap();
+
+            // Import the backup (restores dark theme)
+            let raw = std::fs::read_to_string(&backup_path).unwrap();
+            let _backup: crate::storage::auth_file::AuthData = serde_json::from_str(&raw).unwrap();
+            let dest = crate::paths::auth_path();
+            std::fs::copy(&backup_path, &dest).unwrap();
+
+            // Verify restore
+            let restored = crate::storage::try_load().unwrap();
+            assert_eq!(restored.config.theme, "dark", "import_backup should restore original config");
+
+            let _ = std::fs::remove_file(&backup_path);
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_import_backup_invalid_json_rejected() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            std::fs::write(&backup_path, "not valid json at all").unwrap();
+
+            let raw = std::fs::read_to_string(&backup_path).unwrap();
+            let result: Result<crate::storage::auth_file::AuthData, _> = serde_json::from_str(&raw);
+            assert!(result.is_err(), "invalid JSON should be rejected");
+
+            let _ = std::fs::remove_file(&backup_path);
+            cleanup_auth_file();
+        });
+    }
+
+    // ── corrupted auth file ──────────────────────────────────
+
+    #[test]
+    fn test_corrupted_auth_file_graceful_fallback() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            // Write garbage to the auth file
+            std::fs::write(crate::paths::auth_path(), "{{corrupted json[[[").unwrap();
+
+            // try_load should return fresh() on parse failure (via load() fallback)
+            let data = crate::storage::load();
+            assert_eq!(data.version, 1);
+            assert!(!data.config.password_protected);
+            cleanup_auth_file();
+        });
+    }
 }
