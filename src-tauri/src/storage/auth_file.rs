@@ -1,0 +1,209 @@
+//! Combined `.auth` file storage: config + encrypted accounts + log.
+//!
+//! Format: JSON with version field for future evolution.
+//!
+//! ```json
+//! { "version": 1, "config": {...}, "accounts": {...}, "log": "..." }
+//! ```
+
+use crate::crypto;
+use crate::models::account::Account;
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct AuthData {
+    pub version: u32,
+    pub config: crate::config::Config,
+    pub accounts: AccountsPayload,
+    pub log: String,
+}
+
+/// On-disk representation of the accounts payload (supports encrypted + plaintext).
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct AccountsPayload {
+    /// Whether the content is AES-256-GCM encrypted.
+    #[serde(default)]
+    pub encrypted: bool,
+
+    /// Hex-encoded 12-byte nonce (present when encrypted).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub nonce_hex: Option<String>,
+
+    /// Hex-encoded ciphertext (present when encrypted).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ciphertext_hex: Option<String>,
+
+    /// Plaintext accounts JSON (present when NOT encrypted).
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub data_json: String,
+}
+
+const CURRENT_VERSION: u32 = 1;
+
+// ── Public API ──────────────────────────────────────────────
+
+pub fn auth_path() -> std::path::PathBuf {
+    crate::paths::auth_path()
+}
+
+pub fn exists() -> bool {
+    auth_path().exists()
+}
+
+pub fn load() -> AuthData {
+    try_load().unwrap_or_else(|_| fresh())
+}
+
+pub fn try_load() -> Result<AuthData, String> {
+    let path = auth_path();
+    if !path.exists() {
+        return Ok(fresh());
+    }
+
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    let mut data: AuthData = serde_json::from_str(&raw)
+        .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
+
+    if reconcile_invariants(&mut data) {
+        save(&data)?;
+    }
+
+    Ok(data)
+}
+
+pub fn save(data: &AuthData) -> Result<(), String> {
+    let json = serde_json::to_string_pretty(data)
+        .map_err(|e| format!("failed to serialize auth data: {e}"))?;
+    std::fs::write(&auth_path(), &json)
+        .map_err(|e| format!("failed to write {}: {e}", auth_path().display()))
+}
+
+pub fn encrypt_accounts(accounts: &[Account], key: &[u8; 32]) -> Result<AccountsPayload, String> {
+    let json = serde_json::to_string(accounts)
+        .map_err(|e| format!("failed to serialize accounts: {e}"))?;
+    let (nonce, ciphertext) = crypto::encrypt(&json, key)?;
+    Ok(AccountsPayload {
+        encrypted: true,
+        nonce_hex: Some(hex::encode(&nonce)),
+        ciphertext_hex: Some(hex::encode(&ciphertext)),
+        data_json: String::new(),
+    })
+}
+
+pub fn decrypt_accounts(payload: &AccountsPayload, key: &[u8; 32]) -> Result<Vec<Account>, String> {
+    if !payload.encrypted {
+        return serde_json::from_str(&payload.data_json)
+            .map_err(|e| format!("failed to parse accounts: {e}"));
+    }
+
+    let nonce_hex = payload.nonce_hex.as_deref()
+        .ok_or_else(|| "missing nonce_hex in encrypted accounts".to_string())?;
+    let ct_hex = payload.ciphertext_hex.as_deref()
+        .ok_or_else(|| "missing ciphertext_hex in encrypted accounts".to_string())?;
+    let nonce = hex::decode(nonce_hex)
+        .map_err(|e| format!("invalid nonce hex: {e}"))?;
+    let ciphertext = hex::decode(ct_hex)
+        .map_err(|e| format!("invalid ciphertext hex: {e}"))?;
+    let plaintext = crypto::decrypt(&ciphertext, &nonce, key)?;
+    serde_json::from_str(&plaintext)
+        .map_err(|e| format!("failed to parse decrypted accounts: {e}"))
+}
+
+/// Load accounts from AuthData, handling both encrypted and plaintext.
+pub fn load_accounts(
+    data: &AuthData,
+    key: Option<[u8; 32]>,
+) -> Result<Vec<Account>, String> {
+    if data.accounts.encrypted {
+        let k = key.ok_or_else(|| "app is locked".to_string())?;
+        decrypt_accounts(&data.accounts, &k)
+    } else {
+        serde_json::from_str(&data.accounts.data_json)
+            .map_err(|e| format!("failed to parse accounts: {e}"))
+    }
+}
+
+// ── Internals ───────────────────────────────────────────────
+
+fn fresh() -> AuthData {
+    AuthData {
+        version: CURRENT_VERSION,
+        config: crate::config::Config::default(),
+        accounts: AccountsPayload {
+            encrypted: false,
+            nonce_hex: None,
+            ciphertext_hex: None,
+            data_json: String::new(),
+        },
+        log: String::new(),
+    }
+}
+
+fn reconcile_invariants(data: &mut AuthData) -> bool {
+    let mut changed = false;
+
+    // Encrypted content must stay in protected mode
+    if data.accounts.encrypted && !data.config.password_protected {
+        data.config.password_protected = true;
+        changed = true;
+    }
+
+    // Plaintext content must not stay in protected mode
+    if !data.accounts.encrypted && data.config.password_protected {
+        data.config.password_protected = false;
+        changed = true;
+    }
+
+    // Remove stale salt when protection is disabled
+    if !data.config.password_protected && !data.config.password_salt.is_empty() {
+        data.config.password_salt.clear();
+        changed = true;
+    }
+
+    changed
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fresh_defaults() {
+        let data = fresh();
+        assert_eq!(data.version, 1);
+        assert!(!data.config.password_protected);
+        assert!(!data.accounts.encrypted);
+    }
+
+    #[test]
+    fn test_encrypt_decrypt_roundtrip() {
+        let key = [0xABu8; 32];
+        let accounts = vec![Account {
+            id: "test-id".into(),
+            issuer: "Test".into(),
+            label: "test@test.com".into(),
+            algorithm: crate::models::account::Algorithm::SHA1,
+            digits: 6,
+            period: 30,
+            secret: vec![1, 2, 3],
+            sort_order: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        }];
+        let payload = encrypt_accounts(&accounts, &key).unwrap();
+        assert!(payload.encrypted);
+        let decrypted = decrypt_accounts(&payload, &key).unwrap();
+        assert_eq!(decrypted.len(), 1);
+        assert_eq!(decrypted[0].id, "test-id");
+    }
+
+    #[test]
+    fn test_json_roundtrip() {
+        let data = fresh();
+        let json = serde_json::to_string_pretty(&data).unwrap();
+        let restored: AuthData = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.version, 1);
+        assert!(!restored.config.password_protected);
+    }
+}

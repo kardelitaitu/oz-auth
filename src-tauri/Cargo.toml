@@ -1,0 +1,28 @@
+[package]
+name = "oz-auth"
+version = "0.1.0"
+authors = ["kardelitaitu"]
+edition = "2021"
+
+[lib]
+name = "oz_auth_lib"
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-clipboard-manager = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+url = "2"
+base32 = "0.5"
+aes-gcm = "0.10"
+argon2 = "0.5"
+hex = "0.4"
+rand = "0.8"

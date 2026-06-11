@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>oz-auth</title>
+    <link rel="stylesheet" href="/src/styles/themes.css" />
+    <link rel="stylesheet" href="/src/styles/main.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Custom frameless titlebar -->
+      <div id="titlebar" data-tauri-drag-region>
+        <span id="title-text">oz-auth</span>
+        <div id="titlebar-buttons">
+          <button id="btn-pin" title="Always on top">
+            <svg width="12" height="12" viewBox="0 0 32 32">
+              <g transform="rotate(45 16 16)">
+                <path d="M25,13c0,8-9,15-9,15s-9-7-9-15c0-5,4-9,9-9S25,8,25,13z" stroke="currentColor" stroke-width="2" fill="none" stroke-linejoin="round" stroke-linecap="round"/>
+                <circle cx="16" cy="13" r="3" stroke="currentColor" stroke-width="2" fill="none"/>
+              </g>
+            </svg>
+          </button>
+          <button id="btn-minimize" title="Minimize">
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <path d="M2 5h6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+          <button id="btn-close" title="Close">
+            <svg width="10" height="10" viewBox="0 0 10 10">
+              <path d="M1 1l8 8M9 1l-8 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Toolbar -->
+      <div id="toolbar">
+        <input type="text" id="search" placeholder="Search accounts..." />
+        <button id="btn-add" title="Add Account">+</button>
+      </div>
+
+      <!-- Account list -->
+      <div id="account-list"></div>
+
+      <!-- Lock overlay -->
+      <div id="lock-overlay" class="hidden">
+        <div id="lock-card">
+          <h2 id="lock-title">oz-auth is locked</h2>
+          <input type="password" id="lock-input" placeholder="Enter PIN" spellcheck="false" autocomplete="off" />
+          <button id="lock-submit">Unlock</button>
+          <div id="lock-error" class="hidden">Wrong PIN. Try again.</div>
+        </div>
+      </div>
+
+      <!-- Add/Edit Account dialog -->
+      <div id="account-dialog" class="hidden">
+        <div id="dialog-card">
+          <h2 id="dialog-title">Add Account</h2>
+          <input type="text" id="dialog-issuer" placeholder="Issuer (e.g. Google)" spellcheck="false" />
+          <input type="text" id="dialog-label" placeholder="Label (e.g. user@gmail.com)" spellcheck="false" />
+          <input type="text" id="dialog-secret" placeholder="Secret key" spellcheck="false" />
+          <div class="dialog-row">
+            <label>Algorithm</label>
+            <select id="dialog-algorithm">
+              <option value="SHA1">SHA1</option>
+              <option value="SHA256">SHA256</option>
+              <option value="SHA512">SHA512</option>
+            </select>
+          </div>
+          <div class="dialog-row">
+            <label>Digits</label>
+            <select id="dialog-digits">
+              <option value="6">6</option>
+              <option value="8">8</option>
+            </select>
+          </div>
+          <div class="dialog-row">
+            <label>Period</label>
+            <select id="dialog-period">
+              <option value="30">30s</option>
+              <option value="60">60s</option>
+            </select>
+          </div>
+          <div class="dialog-actions">
+            <button id="dialog-cancel">Cancel</button>
+            <button id="dialog-submit">Add</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Toast bar -->
+      <div id="toast-bar" class="hidden"></div>
+    </div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
