@@ -24,6 +24,12 @@ impl<R: Runtime> TrayState<R> {
     }
 }
 
+impl<R: Runtime> Default for TrayState<R> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 pub fn build<R: Runtime>(
     app: &AppHandle<R>,
     tooltip: &str,
@@ -120,11 +126,7 @@ pub fn generate_pie_icon(pct: f64) -> Result<Image<'static>, Box<dyn std::error:
                 // Determine if this pixel is in the "active" pie slice
                 let in_slice = pixel_angle <= angle;
 
-                let (r, g, b) = if in_slice {
-                    fill_color
-                } else {
-                    bg_color
-                };
+                let (r, g, b) = if in_slice { fill_color } else { bg_color };
 
                 buf[idx] = r;
                 buf[idx + 1] = g;

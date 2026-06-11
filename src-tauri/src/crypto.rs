@@ -36,11 +36,7 @@ pub fn encrypt(plaintext: &str, key: &[u8; 32]) -> Result<(Vec<u8>, Vec<u8>), St
 ///
 /// Returns the decrypted plaintext. The caller should zeroize the returned
 /// String after parsing sensitive data from it.
-pub fn decrypt(
-    ciphertext: &[u8],
-    nonce_bytes: &[u8],
-    key: &[u8; 32],
-) -> Result<String, String> {
+pub fn decrypt(ciphertext: &[u8], nonce_bytes: &[u8], key: &[u8; 32]) -> Result<String, String> {
     if nonce_bytes.len() != 12 {
         return Err("invalid nonce: must be 12 bytes".to_string());
     }
@@ -49,8 +45,7 @@ pub fn decrypt(
     let mut plaintext = cipher
         .decrypt(nonce, ciphertext)
         .map_err(|_| "wrong password or corrupted data".to_string())?;
-    let result = String::from_utf8(plaintext.clone())
-        .map_err(|e| format!("invalid utf-8: {e}"))?;
+    let result = String::from_utf8(plaintext.clone()).map_err(|e| format!("invalid utf-8: {e}"))?;
     // Zeroize the plaintext bytes immediately
     plaintext.zeroize();
     Ok(result)

@@ -36,8 +36,11 @@ fn zeroize_accounts(accounts: &mut Vec<Account>) {
 /// Decode a secret that may be base32-encoded (manual entry) or raw bytes.
 fn decode_secret(input: &str) -> Result<Vec<u8>, String> {
     let trimmed: String = input.chars().filter(|c| !c.is_whitespace()).collect();
-    base32::decode(Alphabet::Rfc4648 { padding: false }, &trimmed.to_uppercase())
-        .ok_or_else(|| "invalid base32 secret".to_string())
+    base32::decode(
+        Alphabet::Rfc4648 { padding: false },
+        &trimmed.to_uppercase(),
+    )
+    .ok_or_else(|| "invalid base32 secret".to_string())
 }
 
 #[tauri::command]
@@ -129,10 +132,7 @@ pub fn add_account_from_uri(
 }
 
 #[tauri::command]
-pub fn remove_account(
-    account_id: String,
-    state: State<'_, AppState>,
-) -> Result<(), String> {
+pub fn remove_account(account_id: String, state: State<'_, AppState>) -> Result<(), String> {
     let mut data = try_load()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);

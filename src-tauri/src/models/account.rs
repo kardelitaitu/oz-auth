@@ -3,13 +3,13 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
-    pub id: String,            // UUID v4
-    pub issuer: String,        // "Google", "GitHub", etc.
-    pub label: String,         // "user@example.com"
+    pub id: String,     // UUID v4
+    pub issuer: String, // "Google", "GitHub", etc.
+    pub label: String,  // "user@example.com"
     pub algorithm: Algorithm,
-    pub digits: u8,            // 6 or 8
-    pub period: u32,           // 30 (seconds)
-    pub secret: Vec<u8>,       // Raw secret key bytes
+    pub digits: u8,      // 6 or 8
+    pub period: u32,     // 30 (seconds)
+    pub secret: Vec<u8>, // Raw secret key bytes
     pub sort_order: u32,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
