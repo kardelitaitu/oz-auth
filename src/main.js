@@ -46,7 +46,7 @@ const deleteConfirmCancel = document.getElementById("delete-confirm-cancel");
 // ── Shared state ───────────────────────────────────────────
 const accounts = [];
 const secondsRemaining = {};
-let lockTimeoutMinutes = 5;
+let lockTimeoutSeconds = 300;
 let clipboardClearSeconds = 30;
 let passwordProtected = false;
 let appName = "oz-auth";
@@ -237,11 +237,11 @@ function resetActivity() {
 
 function startAutoLock() {
   stopAutoLock();
-  if (!passwordProtected || !lockTimeoutMinutes || lockTimeoutMinutes <= 0) return;
+  if (!passwordProtected || !lockTimeoutSeconds || lockTimeoutSeconds <= 0) return;
   autoLockTimer = setInterval(async () => {
     if (lock.getLocked()) return;
-    const idle = (Date.now() - lastActivity) / 1000 / 60;
-    if (idle >= lockTimeoutMinutes) {
+    const idle = (Date.now() - lastActivity) / 1000;
+    if (idle >= lockTimeoutSeconds) {
       try {
         await invoke("lock");
         lock.setLocked(true);
@@ -311,7 +311,11 @@ btnSettings.addEventListener("click", () => {
       clipboardClearSeconds = seconds;
       clipboard.setClearSeconds(seconds);
     },
-    lockTimeoutMinutes,
+    onLockTimeoutChanged: (seconds) => {
+      lockTimeoutSeconds = seconds;
+      startAutoLock();
+    },
+    lockTimeoutSeconds,
     clipboardClearSeconds,
     appName,
     appVersion,
@@ -430,7 +434,7 @@ document.addEventListener("keydown", async (e) => {
     const cfg = await invoke("load_config");
     btnPin.classList.toggle("active", cfg.always_on_top);
     applyTheme(cfg.theme || detectSystemTheme());
-    lockTimeoutMinutes = cfg.lock_timeout_minutes || 5;
+    lockTimeoutSeconds = cfg.lock_timeout_seconds || 300;
     clipboardClearSeconds = cfg.clipboard_clear_seconds || 30;
     clipboard.setClearSeconds(clipboardClearSeconds);
     passwordProtected = cfg.password_protected;

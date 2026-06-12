@@ -1,27 +1,71 @@
 use serde::{Deserialize, Serialize};
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Clone)]
 pub struct Config {
-    #[serde(default = "default_width")]
     pub width: u32,
-    #[serde(default = "default_height")]
     pub height: u32,
-    #[serde(default = "default_left")]
     pub left: i32,
-    #[serde(default = "default_top")]
     pub top: i32,
-    #[serde(default)]
     pub always_on_top: bool,
-    #[serde(default = "default_theme")]
     pub theme: String,
-    #[serde(default)]
     pub password_protected: bool,
-    #[serde(default)]
     pub password_salt: String,
-    #[serde(default = "default_lock_timeout")]
-    pub lock_timeout_minutes: u32,
-    #[serde(default = "default_clipboard_clear_seconds")]
+    pub lock_timeout_seconds: u32,
     pub clipboard_clear_seconds: u32,
+}
+
+/// Intermediate struct for deserialization — captures both old and new field names.
+#[derive(Deserialize)]
+struct ConfigDe {
+    #[serde(default = "default_width")]
+    width: u32,
+    #[serde(default = "default_height")]
+    height: u32,
+    #[serde(default = "default_left")]
+    left: i32,
+    #[serde(default = "default_top")]
+    top: i32,
+    #[serde(default)]
+    always_on_top: bool,
+    #[serde(default = "default_theme")]
+    theme: String,
+    #[serde(default)]
+    password_protected: bool,
+    #[serde(default)]
+    password_salt: String,
+    #[serde(default)]
+    lock_timeout_seconds: Option<u32>,
+    #[serde(default)]
+    lock_timeout_minutes: Option<u32>,
+    #[serde(default = "default_clipboard_clear_seconds")]
+    clipboard_clear_seconds: u32,
+}
+
+impl<'de> Deserialize<'de> for Config {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let de = ConfigDe::deserialize(deserializer)?;
+        // Migrate: old `lock_timeout_minutes` → new `lock_timeout_seconds`
+        let lock_timeout_seconds = match (de.lock_timeout_seconds, de.lock_timeout_minutes) {
+            (Some(secs), _) => secs,
+            (None, Some(mins)) => mins * 60,
+            (None, None) => default_lock_timeout(),
+        };
+        Ok(Config {
+            width: de.width,
+            height: de.height,
+            left: de.left,
+            top: de.top,
+            always_on_top: de.always_on_top,
+            theme: de.theme,
+            password_protected: de.password_protected,
+            password_salt: de.password_salt,
+            lock_timeout_seconds,
+            clipboard_clear_seconds: de.clipboard_clear_seconds,
+        })
+    }
 }
 
 fn default_width() -> u32 {
@@ -45,7 +89,7 @@ fn default_theme() -> String {
 }
 
 fn default_lock_timeout() -> u32 {
-    5
+    300
 }
 
 fn default_clipboard_clear_seconds() -> u32 {
@@ -63,7 +107,7 @@ impl Default for Config {
             theme: default_theme(),
             password_protected: false,
             password_salt: String::new(),
-            lock_timeout_minutes: default_lock_timeout(),
+            lock_timeout_seconds: default_lock_timeout(),
             clipboard_clear_seconds: default_clipboard_clear_seconds(),
         }
     }
@@ -81,7 +125,7 @@ mod tests {
         assert!(!cfg.always_on_top);
         assert!(!cfg.password_protected);
         assert_eq!(cfg.theme, "dark");
-        assert_eq!(cfg.lock_timeout_minutes, 5);
+        assert_eq!(cfg.lock_timeout_seconds, 300);
         assert_eq!(cfg.clipboard_clear_seconds, 30);
         assert!(cfg.password_salt.is_empty());
     }
@@ -97,7 +141,7 @@ mod tests {
             theme: "light".to_string(),
             password_protected: true,
             password_salt: "aabbccdd".to_string(),
-            lock_timeout_minutes: 10,
+            lock_timeout_seconds: 600,
             clipboard_clear_seconds: 15,
         };
         let json = serde_json::to_string_pretty(&cfg).unwrap();
@@ -105,7 +149,7 @@ mod tests {
         assert_eq!(restored.width, 400);
         assert_eq!(restored.theme, "light");
         assert!(restored.password_protected);
-        assert_eq!(restored.lock_timeout_minutes, 10);
+        assert_eq!(restored.lock_timeout_seconds, 600);
         assert_eq!(restored.clipboard_clear_seconds, 15);
         assert_eq!(restored.password_salt, "aabbccdd");
     }
@@ -116,7 +160,7 @@ mod tests {
         let json = r#"{"width":400,"height":600,"left":50,"top":80,"always_on_top":false,"password_protected":false,"password_salt":""}"#;
         let cfg: Config = serde_json::from_str(json).unwrap();
         assert_eq!(cfg.theme, "dark");
-        assert_eq!(cfg.lock_timeout_minutes, 5);
+        assert_eq!(cfg.lock_timeout_seconds, 300);
         assert_eq!(cfg.clipboard_clear_seconds, 30);
     }
 
@@ -149,8 +193,8 @@ mod tests {
     fn test_config_lock_timeout_default_minimum() {
         let cfg = Config::default();
         assert_eq!(
-            cfg.lock_timeout_minutes, 5,
-            "default lock timeout should be 5 minutes"
+            cfg.lock_timeout_seconds, 300,
+            "default lock timeout should be 300 seconds"
         );
     }
 
@@ -239,7 +283,7 @@ mod tests {
         let cfg = Config {
             width: u32::MAX,
             height: u32::MAX,
-            lock_timeout_minutes: u32::MAX,
+            lock_timeout_seconds: u32::MAX,
             clipboard_clear_seconds: u32::MAX,
             ..Config::default()
         };
@@ -247,9 +291,35 @@ mod tests {
         let restored: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.width, u32::MAX);
         assert_eq!(restored.height, u32::MAX);
-        assert_eq!(restored.lock_timeout_minutes, u32::MAX);
+        assert_eq!(restored.lock_timeout_seconds, u32::MAX);
         assert_eq!(restored.clipboard_clear_seconds, u32::MAX);
         assert_eq!(restored.left, 100); // from struct default, not Default trait
         assert_eq!(restored.top, 100);
+    }
+
+    #[test]
+    fn test_migration_lock_timeout_minutes_to_seconds() {
+        // Old config with lock_timeout_minutes should migrate to lock_timeout_seconds
+        let json = r#"{"lock_timeout_minutes": 10}"#;
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.lock_timeout_seconds, 600, "10 minutes → 600 seconds");
+    }
+
+    #[test]
+    fn test_migration_lock_timeout_seconds_takes_precedence() {
+        // If both fields present, lock_timeout_seconds wins
+        let json = r#"{"lock_timeout_seconds": 120, "lock_timeout_minutes": 10}"#;
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            cfg.lock_timeout_seconds, 120,
+            "lock_timeout_seconds takes precedence"
+        );
+    }
+
+    #[test]
+    fn test_migration_lock_timeout_zero_disables() {
+        let json = r#"{"lock_timeout_seconds": 0}"#;
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.lock_timeout_seconds, 0, "0 disables auto-lock");
     }
 }

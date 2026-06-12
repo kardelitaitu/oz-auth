@@ -4,7 +4,7 @@ let cancelHandler = null;
 
 /**
  * Open the settings overlay and populate it.
- * `config.ctx` must provide: invoke, toast, onPinSet, onLockNow, lockTimeoutMinutes
+ * `config.ctx` must provide: invoke, toast, onPinSet, onLockNow, lockTimeoutSeconds
  */
 export function openSettings(config) {
   const {
@@ -13,7 +13,8 @@ export function openSettings(config) {
     onPinSet,
     onLockNow,
     onClipboardClearSecondsChanged,
-    lockTimeoutMinutes,
+    onLockTimeoutChanged,
+    lockTimeoutSeconds,
     clipboardClearSeconds,
     appName,
     appVersion,
@@ -80,14 +81,18 @@ export function openSettings(config) {
         <p style="font-size:11px;color:var(--btn-color);line-height:1.4;">To export: copy the <code>.auth</code> file to a safe location.<br>To import: replace the <code>.auth</code> file and restart.</p>
       </div>
       <div class="settings-section">
-        <h3>Auto-Lock</h3>
-        <p style="font-size:12px;color:var(--btn-color);margin-bottom:4px;">Lock after ${lockTimeoutMinutes} min of inactivity</p>
+        <div class="settings-row">
+          <label class="settings-row-label">Auto-lock (seconds)</label>
+          <input type="number" id="lock-timeout" value="${lockTimeoutSeconds}" min="0" max="3600" step="30" class="settings-row-input" />
+        </div>
+        <div class="settings-row-hint">0 = disabled</div>
       </div>
       <div class="settings-section">
-        <h3>Clipboard</h3>
-        <label style="font-size:12px;color:var(--btn-color);">Auto-clear after (seconds):</label>
-        <input type="number" id="clipboard-clear" value="${clipboardClearSeconds}" min="5" max="300" step="5" style="width:80px;margin-top:4px;" />
-        <div class="settings-error hidden" id="clipboard-error"></div>
+        <div class="settings-row">
+          <label class="settings-row-label">Auto-clear clipboard (seconds)</label>
+          <input type="number" id="clipboard-clear" value="${clipboardClearSeconds}" min="0" max="300" step="5" class="settings-row-input" />
+        </div>
+        <div class="settings-row-hint">0 = disabled</div>
       </div>
     `;
 
@@ -113,25 +118,32 @@ export function openSettings(config) {
       });
     });
 
-    // Clipboard timeout auto-save on change
-    let clipboardSaveTimer;
-    document.getElementById("clipboard-clear").addEventListener("input", () => {
-      clearTimeout(clipboardSaveTimer);
-      clipboardSaveTimer = setTimeout(async () => {
-        const val = parseInt(document.getElementById("clipboard-clear").value, 10);
-        const clipError = document.getElementById("clipboard-error");
-        clipError.classList.add("hidden");
-        if (isNaN(val) || val < 5 || val > 300) return;
+    // Auto-save on input change (debounced)
+    let saveTimer;
+    async function saveField(field, value, callback) {
+      clearTimeout(saveTimer);
+      saveTimer = setTimeout(async () => {
         try {
           const cfg = await invoke("load_config");
-          cfg.clipboard_clear_seconds = val;
+          cfg[field] = value;
           await invoke("save_config", { cfg });
-          if (onClipboardClearSecondsChanged) onClipboardClearSecondsChanged(val);
+          if (callback) callback(value);
         } catch (e) {
-          clipError.textContent = typeof e === "string" ? e : "Failed to save";
-          clipError.classList.remove("hidden");
+          // silently ignore — user may still be typing
         }
       }, 400);
+    }
+
+    document.getElementById("lock-timeout").addEventListener("input", (e) => {
+      const val = parseInt(e.target.value, 10);
+      if (isNaN(val) || val < 0 || val > 3600) return;
+      saveField("lock_timeout_seconds", val, onLockTimeoutChanged);
+    });
+
+    document.getElementById("clipboard-clear").addEventListener("input", (e) => {
+      const val = parseInt(e.target.value, 10);
+      if (isNaN(val) || val < 0 || val > 300) return;
+      saveField("clipboard_clear_seconds", val, onClipboardClearSecondsChanged);
     });
 
     if (hasPin) {

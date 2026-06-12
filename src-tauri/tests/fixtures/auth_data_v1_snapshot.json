@@ -9,7 +9,7 @@
     "theme": "dark",
     "password_protected": false,
     "password_salt": "",
-    "lock_timeout_minutes": 5,
+    "lock_timeout_seconds": 300,
     "clipboard_clear_seconds": 30
   },
   "accounts": {

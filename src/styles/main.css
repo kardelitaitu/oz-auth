@@ -131,11 +131,31 @@ body.theme-dark, body:not(.theme-light) {
   flex-shrink: 0;
 }
 
-#search {
+.search-wrapper {
   flex: 1;
-  padding: 6px 10px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.search-icon {
+  position: absolute;
+  left: 10px;
+  pointer-events: none;
+  color: var(--btn-color);
+  transition: color 0.2s;
+}
+
+.search-wrapper:focus-within .search-icon {
+  color: var(--code-color);
+  opacity: 0.7;
+}
+
+#search {
+  width: 100%;
+  padding: 6px 10px 6px 32px;
   border: 1px solid var(--input-border);
-  border-radius: 4px;
+  border-radius: 8px;
   background: var(--input-bg);
   color: var(--text);
   font-size: 13px;
@@ -174,7 +194,10 @@ body.theme-dark, body:not(.theme-light) {
 /* Standard hover animation for all toolbar icons: wiggle + bounce */
 #btn-settings:hover svg,
 #btn-theme:hover svg,
-#btn-add:hover svg {
+#btn-add:hover svg,
+#btn-pin:hover svg,
+#btn-minimize:hover svg,
+#btn-close:hover svg {
   animation: wiggle-bounce 0.8s ease-in-out infinite;
 }
 
@@ -680,6 +703,43 @@ body.theme-dark, body:not(.theme-light) {
   color: var(--btn-color);
   text-transform: uppercase;
   letter-spacing: 0.5px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-row-label {
+  font-size: 12px;
+  color: var(--btn-color);
+  white-space: nowrap;
+}
+
+.settings-row-input {
+  width: 64px;
+  padding: 4px 6px;
+  border: 1px solid var(--input-border);
+  border-radius: 4px;
+  background: var(--input-bg);
+  color: var(--text);
+  font-size: 12px;
+  text-align: right;
+  outline: none;
+  font-family: inherit;
+}
+
+.settings-row-input:focus {
+  border-color: var(--code-color);
+}
+
+.settings-row-hint {
+  font-size: 11px;
+  color: var(--btn-color);
+  opacity: 0.6;
+  margin-top: 2px;
 }
 
 .settings-btn {

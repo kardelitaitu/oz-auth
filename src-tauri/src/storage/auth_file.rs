@@ -879,7 +879,7 @@ mod tests {
                 theme: "dark".into(),
                 password_protected: false,
                 password_salt: String::new(),
-                lock_timeout_minutes: 5,
+                lock_timeout_seconds: 300,
                 clipboard_clear_seconds: 30,
             },
             accounts: AccountsPayload {
@@ -1092,7 +1092,10 @@ mod tests {
         assert!(!data.config.password_protected, "preserved from JSON");
         assert!(data.config.password_salt.is_empty(), "default salt");
         assert_eq!(data.config.theme, "dark", "default theme");
-        assert_eq!(data.config.lock_timeout_minutes, 5, "default lock timeout");
+        assert_eq!(
+            data.config.lock_timeout_seconds, 300,
+            "default lock timeout"
+        );
         assert_eq!(
             data.config.clipboard_clear_seconds, 30,
             "default clipboard clear"
@@ -1124,7 +1127,7 @@ mod tests {
         assert!(!saved.config.always_on_top, "always_on_top persisted");
         assert_eq!(saved.config.theme, "dark", "theme persisted");
         assert_eq!(
-            saved.config.lock_timeout_minutes, 5,
+            saved.config.lock_timeout_seconds, 300,
             "lock timeout persisted"
         );
         assert_eq!(

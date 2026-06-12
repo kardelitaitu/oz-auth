@@ -1,15 +1,16 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};#[derive(Debug, Clone, Serialize, Deserialize)]
+use serde::{Deserialize, Serialize};
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
     pub id: String,     // UUID v4
     pub issuer: String, // "Google", "GitHub", etc.
     pub label: String,  // "user@example.com"
-        #[serde(default)]
+    #[serde(default)]
     pub algorithm: Algorithm,
     #[serde(default = "default_digits")]
-    pub digits: u8,      // 6 or 8
+    pub digits: u8, // 6 or 8
     #[serde(default = "default_period")]
-    pub period: u32,     // 30 (seconds)
+    pub period: u32, // 30 (seconds)
     pub secret: Vec<u8>, // Raw secret key bytes
     #[serde(default)]
     pub sort_order: u32,
@@ -17,13 +18,14 @@ pub struct Account {
     pub created_at: DateTime<Utc>,
     #[serde(default = "default_updated_at")]
     pub updated_at: DateTime<Utc>,
-}/// Frontend-safe view — no secret field exposed over IPC.
+}
+/// Frontend-safe view — no secret field exposed over IPC.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountSummary {
     pub id: String,
     pub issuer: String,
     pub label: String,
-        #[serde(default)]
+    #[serde(default)]
     pub algorithm: Algorithm,
     #[serde(default = "default_digits")]
     pub digits: u8,
@@ -160,8 +162,14 @@ mod tests {
         assert_eq!(account.period, 30);
         assert_eq!(account.sort_order, 0);
         // created_at and updated_at are set to Utc::now() — just verify they parse
-        assert!(account.created_at.timestamp() > 0, "created_at should have a valid timestamp");
-        assert!(account.updated_at.timestamp() > 0, "updated_at should have a valid timestamp");
+        assert!(
+            account.created_at.timestamp() > 0,
+            "created_at should have a valid timestamp"
+        );
+        assert!(
+            account.updated_at.timestamp() > 0,
+            "updated_at should have a valid timestamp"
+        );
     }
 
     #[test]
@@ -172,8 +180,14 @@ mod tests {
         assert_eq!(summary.digits, 6);
         assert_eq!(summary.period, 30);
         assert_eq!(summary.sort_order, 0);
-        assert!(summary.created_at.timestamp() > 0, "created_at should have a valid timestamp");
-        assert!(summary.updated_at.timestamp() > 0, "updated_at should have a valid timestamp");
+        assert!(
+            summary.created_at.timestamp() > 0,
+            "created_at should have a valid timestamp"
+        );
+        assert!(
+            summary.updated_at.timestamp() > 0,
+            "updated_at should have a valid timestamp"
+        );
     }
 
     #[test]
