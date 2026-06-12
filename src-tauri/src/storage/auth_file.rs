@@ -210,7 +210,10 @@ mod tests {
         assert_eq!(data.version, 1);
         assert!(!data.config.password_protected);
         assert!(!data.accounts.encrypted);
-        assert_eq!(data.accounts.data_json, "[]", "fresh data_json must be valid empty JSON array, not empty string");
+        assert_eq!(
+            data.accounts.data_json, "[]",
+            "fresh data_json must be valid empty JSON array, not empty string"
+        );
         assert!(data.accounts.nonce_hex.is_none());
         assert!(data.accounts.ciphertext_hex.is_none());
         // Verify fresh() can be parsed as accounts (regression: empty string would fail)
@@ -416,8 +419,16 @@ mod tests {
         for (i, a) in decrypted.iter().enumerate() {
             let expected_id = format!("stress-{i:03}");
             assert_eq!(a.id, expected_id, "id mismatch at index {i}");
-            assert_eq!(a.issuer, format!("Issuer{i}"), "issuer mismatch at index {i}");
-            assert_eq!(a.label, format!("user{i}@example.com"), "label mismatch at index {i}");
+            assert_eq!(
+                a.issuer,
+                format!("Issuer{i}"),
+                "issuer mismatch at index {i}"
+            );
+            assert_eq!(
+                a.label,
+                format!("user{i}@example.com"),
+                "label mismatch at index {i}"
+            );
 
             // Verify secret survived encrypt→decrypt cycle
             let expected_secret: Vec<u8> = (0u8..10).map(|j| (i as u8).wrapping_add(j)).collect();
@@ -436,9 +447,18 @@ mod tests {
             assert_eq!(a.period, expected_period, "period mismatch at index {i}");
 
             match i % 3 {
-                0 => assert!(matches!(a.algorithm, crate::models::account::Algorithm::SHA1)),
-                1 => assert!(matches!(a.algorithm, crate::models::account::Algorithm::SHA256)),
-                _ => assert!(matches!(a.algorithm, crate::models::account::Algorithm::SHA512)),
+                0 => assert!(matches!(
+                    a.algorithm,
+                    crate::models::account::Algorithm::SHA1
+                )),
+                1 => assert!(matches!(
+                    a.algorithm,
+                    crate::models::account::Algorithm::SHA256
+                )),
+                _ => assert!(matches!(
+                    a.algorithm,
+                    crate::models::account::Algorithm::SHA512
+                )),
             }
         }
 
