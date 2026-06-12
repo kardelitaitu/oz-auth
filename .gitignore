@@ -5,15 +5,23 @@ node_modules/
 dist/
 src-tauri/target/
 
+# Auto-generated Tauri scaffolding
+src-tauri/gen/
+
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
 
 # App data files (user data, no .auth files in repo)
 *.auth
@@ -26,3 +34,6 @@ sticky-notes-rust-example/
 # Environment
 .env
 .env.local
+
+# Coverage
+coverage/
