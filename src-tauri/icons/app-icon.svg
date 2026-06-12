@@ -4,32 +4,66 @@
       <stop offset="0%" style="stop-color:#1a1a2e"/>
       <stop offset="100%" style="stop-color:#16213e"/>
     </linearGradient>
-    <linearGradient id="shield" x1="0%" y1="0%" x2="0%" y2="100%">
+    <linearGradient id="fpGrad" x1="0%" y1="0%" x2="100%" y2="100%">
       <stop offset="0%" style="stop-color:#e94560"/>
-      <stop offset="100%" style="stop-color:#c23152"/>
+      <stop offset="100%" style="stop-color:#f0c040"/>
     </linearGradient>
-    <linearGradient id="lock" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" style="stop-color:#f0c040"/>
-      <stop offset="100%" style="stop-color:#d4a81a"/>
-    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" style="stop-color:rgba(233,69,96,0.12)"/>
+      <stop offset="100%" style="stop-color:rgba(233,69,96,0)"/>
+    </radialGradient>
   </defs>
-  <!-- Background circle -->
+
+  <!-- Background -->
   <rect width="512" height="512" rx="128" fill="url(#bg)"/>
-  <!-- Shield shape -->
-  <path d="M256 60 L380 120 L380 280 C380 370 320 430 256 460 C192 430 132 370 132 280 L132 120 Z"
-        fill="url(#shield)" stroke="#c23152" stroke-width="4"/>
-  <!-- Inner shield highlight -->
-  <path d="M256 60 L380 120 L380 280 C380 370 320 430 256 460 C192 430 132 370 132 280 L132 120 Z"
-        fill="none" stroke="rgba(255,255,255,0.15)" stroke-width="8"
-        transform="scale(0.85) translate(40,40)"/>
-  <!-- Lock body (circle) -->
-  <circle cx="256" cy="260" r="48" fill="url(#lock)"/>
-  <!-- Keyhole -->
-  <rect x="248" y="248" width="16" height="30" rx="3" fill="#1a1a2e"/>
-  <circle cx="256" cy="240" r="12" fill="#1a1a2e"/>
-  <!-- Lock shackle -->
-  <path d="M210 240 C210 205 224 190 256 190 C288 190 302 205 302 240"
-        fill="none" stroke="url(#lock)" stroke-width="14" stroke-linecap="round"/>
-  <!-- Small dot accent -->
-  <circle cx="306" cy="140" r="10" fill="rgba(255,255,255,0.3)"/>
+
+  <!-- Subtle glow -->
+  <circle cx="256" cy="260" r="170" fill="url(#glow)"/>
+
+  <!-- Fingerprint ridges — loop/whorl pattern with natural asymmetry -->
+  <g fill="none" stroke="url(#fpGrad)" stroke-linecap="round" stroke-linejoin="round" opacity="0.9">
+    
+    <!-- Ridge 1 — outer loop wrapping top and sides -->
+    <path d="M156 280 C156 190 190 140 256 140 C322 140 356 190 356 280 C356 340 340 370 310 390 C290 402 270 405 256 405 C242 405 222 402 202 390 C172 370 156 340 156 280 Z"
+          stroke-width="5.5"/>
+
+    <!-- Ridge 2 — next inner loop -->
+    <path d="M170 280 C170 200 200 155 256 155 C312 155 342 200 342 280 C342 333 328 360 304 378 C286 389 270 392 256 392 C242 392 226 389 208 378 C184 360 170 333 170 280 Z"
+          stroke-width="5"/>
+
+    <!-- Ridge 3 — inner loop with slight shift -->
+    <path d="M184 280 C184 210 210 170 256 170 C302 170 328 210 328 280 C328 326 316 350 298 366 C282 376 268 379 256 379 C244 379 230 376 214 366 C196 350 184 326 184 280 Z"
+          stroke-width="4.5"/>
+
+    <!-- Ridge 4 — tighter loop -->
+    <path d="M198 278 C198 220 220 185 256 185 C292 185 314 220 314 278 C314 318 304 340 292 354 C280 363 268 366 256 366 C244 366 232 363 220 354 C208 340 198 318 198 278 Z"
+          stroke-width="4"/>
+
+    <!-- Ridge 5 — inner compact loop -->
+    <path d="M212 276 C212 230 230 200 256 200 C282 200 300 230 300 276 C300 310 292 330 280 342 C270 350 262 352 256 352 C250 352 242 350 232 342 C220 330 212 310 212 276 Z"
+          stroke-width="3.5"/>
+
+    <!-- Ridge 6 — core loop -->
+    <path d="M226 274 C226 240 240 215 256 215 C272 215 286 240 286 274 C286 302 280 318 272 328 C266 334 260 336 256 336 C252 336 246 334 240 328 C232 318 226 302 226 274 Z"
+          stroke-width="3"/>
+
+    <!-- Ridge 7 — innermost whorl, offset slightly right for asymmetry -->
+    <path d="M240 272 C240 250 250 232 258 230 C266 228 278 242 280 260 C282 276 278 300 272 312 C268 318 264 320 258 318 C252 316 244 302 240 272 Z"
+          stroke-width="2.5"/>
+
+    <!-- Ridge 8 — center core dot/wave -->
+    <path d="M250 266 C250 258 255 250 260 252 C265 254 268 264 266 274 C264 282 260 292 258 296"
+          stroke-width="2"/>
+
+    <!-- Center dot -->
+    <circle cx="258" cy="264" r="5" fill="url(#fpGrad)" stroke="none" opacity="0.85"/>
+  </g>
+
+  <!-- Outer ring -->
+  <circle cx="256" cy="280" r="140" fill="none" stroke="rgba(255,255,255,0.05)" stroke-width="1.5"/>
+
+  <!-- Accent dots -->
+  <circle cx="370" cy="190" r="4" fill="rgba(233,69,96,0.4)"/>
+  <circle cx="148" cy="350" r="3.5" fill="rgba(240,192,64,0.4)"/>
+  <circle cx="330" cy="130" r="2.5" fill="rgba(255,255,255,0.2)"/>
 </svg>
