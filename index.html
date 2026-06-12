@@ -66,7 +66,11 @@
 
       <!-- Lock overlay -->
       <div id="lock-overlay" class="hidden">
-        <button id="lock-close" title="Close">&times;</button>
+        <button id="lock-close" title="Close">
+          <svg viewBox="0 0 16 16" width="22" height="22">
+            <path d="M2 2l12 12M14 2l-12 12" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"/>
+          </svg>
+        </button>
         <div id="lock-card">
           <h2 id="lock-title">oz-auth is locked</h2>
           <input type="password" id="lock-input" placeholder="Enter PIN" spellcheck="false" autocomplete="off" />
@@ -120,7 +124,11 @@
         <div id="settings-card">
           <div class="settings-header">
             <h2 id="settings-title">Settings</h2>
-            <button id="settings-close-btn" title="Close">&times;</button>
+            <button id="settings-close-btn" title="Close">
+              <svg viewBox="0 0 16 16" width="16" height="16">
+                <path d="M2 2l12 12M14 2l-12 12" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+              </svg>
+            </button>
           </div>
           <div id="settings-body">
             <!-- PIN section: dynamically filled -->

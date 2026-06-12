@@ -193,7 +193,7 @@ body.theme-dark, body:not(.theme-light) {
 }
 
 #btn-add:hover svg {
-  animation: bounce 0.4s ease-in-out infinite;
+  animation: bounce 0.8s ease-in-out infinite;
 }
 
 @keyframes spin {
@@ -269,7 +269,6 @@ body.theme-dark, body:not(.theme-light) {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 0;
   transition: border-color 0.15s, background 0.15s, transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
   touch-action: none;
 }
