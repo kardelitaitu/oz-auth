@@ -46,7 +46,7 @@ pub(crate) fn validate_secret_length(secret: &[u8]) -> Result<(), String> {
 /// string is valid in both formats (e.g. only A-F + 2-7 characters).
 /// Falls back to hex if base32 fails.
 /// Requires at least 128 bits (16 bytes) — totp_rs rejects shorter HMAC keys.
-fn decode_secret(input: &str) -> Result<Vec<u8>, String> {
+pub fn decode_secret(input: &str) -> Result<Vec<u8>, String> {
     let trimmed: String = input.chars().filter(|c| !c.is_whitespace()).collect();
     let upper = trimmed.to_uppercase();
 

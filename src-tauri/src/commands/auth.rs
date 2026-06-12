@@ -52,7 +52,7 @@ pub fn unlock(pin: String, state: State<'_, AppState>) -> Result<bool, String> {
     let mut salt = Zeroizing::new(
         hex::decode(&data.config.password_salt).map_err(|e| format!("invalid salt: {e}"))?,
     );
-    let mut key = crate::crypto::derive_key(&pin, &*salt)?;
+    let mut key = crate::crypto::derive_key(&pin, &salt)?;
 
     // Try to decrypt — if it fails, wrong PIN
     match decrypt_accounts(&data.accounts, &key) {
@@ -115,13 +115,13 @@ pub fn change_pin(
     let old_salt = Zeroizing::new(
         hex::decode(&data.config.password_salt).map_err(|e| format!("invalid salt: {e}"))?,
     );
-    let mut old_key = crate::crypto::derive_key(&old_pin, &*old_salt)?;
+    let mut old_key = crate::crypto::derive_key(&old_pin, &old_salt)?;
 
     let mut accounts =
         decrypt_accounts(&data.accounts, &old_key).map_err(|_| "wrong current PIN".to_string())?;
 
     let new_salt = crate::crypto::generate_salt();
-    let new_salt_hex = hex::encode(&*new_salt);
+    let new_salt_hex = hex::encode(*new_salt);
     let mut new_key = crate::crypto::derive_key(&new_pin, &*new_salt)?;
     data.accounts = encrypt_accounts(&accounts, &new_key)?;
     data.config.password_salt = new_salt_hex;
@@ -239,7 +239,7 @@ mod tests {
             let mut key = crypto::derive_key("1234", &*salt).unwrap();
             data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(&*salt);
+            data.config.password_salt = hex::encode(*salt);
             crate::storage::save(&data).unwrap();
             state.set_key(key).unwrap();
             key.zeroize();
@@ -264,7 +264,7 @@ mod tests {
             let accounts: Vec<crate::models::account::Account> = vec![];
             data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(&*salt);
+            data.config.password_salt = hex::encode(*salt);
             crate::storage::save(&data).unwrap();
 
             let loaded = crate::storage::try_load().unwrap();
@@ -287,7 +287,7 @@ mod tests {
             let accounts: Vec<crate::models::account::Account> = vec![];
             data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(&*salt);
+            data.config.password_salt = hex::encode(*salt);
             crate::storage::save(&data).unwrap();
 
             let loaded = crate::storage::try_load().unwrap();
@@ -315,14 +315,14 @@ mod tests {
             let accounts: Vec<crate::models::account::Account> = vec![];
             data.accounts = crate::storage::encrypt_accounts(&accounts, &old_key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(&*salt);
+            data.config.password_salt = hex::encode(*salt);
             crate::storage::save(&data).unwrap();
 
             let mut decrypted = crate::storage::decrypt_accounts(&data.accounts, &old_key).unwrap();
             let new_salt = crypto::generate_salt();
             let mut new_key = crypto::derive_key("newpin", &*new_salt).unwrap();
             data.accounts = crate::storage::encrypt_accounts(&decrypted, &new_key).unwrap();
-            data.config.password_salt = hex::encode(&*new_salt);
+            data.config.password_salt = hex::encode(*new_salt);
             crate::storage::save(&data).unwrap();
 
             let loaded = crate::storage::try_load().unwrap();
@@ -478,7 +478,7 @@ mod tests {
 
             // 2. Set PIN — accounts should become encrypted
             let original_salt = crypto::generate_salt();
-            let original_salt_hex = hex::encode(&*original_salt);
+            let original_salt_hex = hex::encode(*original_salt);
             let mut key = crypto::derive_key("mypin123", &*original_salt).unwrap();
             data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
@@ -658,7 +658,7 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(&*salt);
+            data.config.password_salt = hex::encode(*salt);
             crate::storage::save(&data).unwrap();
 
             // change_pin currently does NOT check AppState lock status —
@@ -717,7 +717,7 @@ mod tests {
             data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(&*salt);
+            data.config.password_salt = hex::encode(*salt);
             crate::storage::save(&data).unwrap();
             state.set_key(key).unwrap();
             key.zeroize();
