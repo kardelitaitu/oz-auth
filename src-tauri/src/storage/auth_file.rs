@@ -151,7 +151,7 @@ fn fresh() -> AuthData {
             encrypted: false,
             nonce_hex: None,
             ciphertext_hex: None,
-            data_json: String::new(),
+            data_json: String::from("[]"),
         },
         log: String::new(),
     }
@@ -172,6 +172,13 @@ fn reconcile_invariants(data: &mut AuthData) -> bool {
 
     if !data.config.password_protected && !data.config.password_salt.is_empty() {
         data.config.password_salt.clear();
+        changed = true;
+    }
+
+    // Normalize empty data_json to valid empty JSON array (migration from before
+    // fresh() used "[]" — empty string would cause "EOF while parsing a value")
+    if !data.accounts.encrypted && data.accounts.data_json.is_empty() {
+        data.accounts.data_json = String::from("[]");
         changed = true;
     }
 
@@ -203,9 +210,12 @@ mod tests {
         assert_eq!(data.version, 1);
         assert!(!data.config.password_protected);
         assert!(!data.accounts.encrypted);
-        assert!(data.accounts.data_json.is_empty());
+        assert_eq!(data.accounts.data_json, "[]", "fresh data_json must be valid empty JSON array, not empty string");
         assert!(data.accounts.nonce_hex.is_none());
         assert!(data.accounts.ciphertext_hex.is_none());
+        // Verify fresh() can be parsed as accounts (regression: empty string would fail)
+        let accounts: Vec<Account> = serde_json::from_str(&data.accounts.data_json).unwrap();
+        assert!(accounts.is_empty());
     }
 
     #[test]
