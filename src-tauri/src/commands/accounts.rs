@@ -34,7 +34,7 @@ fn zeroize_accounts(accounts: &mut Vec<Account>) {
 }
 
 /// Reject a secret shorter than 128 bits (16 bytes) — totp_rs requires it for HMAC.
-fn validate_secret_length(secret: &[u8]) -> Result<(), String> {
+pub(crate) fn validate_secret_length(secret: &[u8]) -> Result<(), String> {
     if secret.len() < 16 {
         return Err(format!(
             "secret too short: {} bits ({} bytes), need at least 128 bits (16 bytes)",
