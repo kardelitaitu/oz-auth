@@ -27,8 +27,10 @@ export function renderAccounts(accounts, accountListEl, callbacks) {
     const card = document.createElement("div");
     card.className = "account-card";
     card.dataset.id = a.id;
-    card.draggable = true;
     card.innerHTML = `
+      <div class="card-drag-handle" title="Drag to reorder">
+        <span></span><span></span><span></span>
+      </div>
       <div class="card-main-row">
         <div class="card-col-1">
           <span class="card-issuer">${escapeHtml(a.issuer)}</span>

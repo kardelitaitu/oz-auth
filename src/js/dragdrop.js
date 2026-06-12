@@ -1,10 +1,11 @@
-//! Drag & drop account reordering using pointer events.
-//! Listeners are attached to `document` during drag for reliable tracking
-//! across the entire viewport — works around WebView2 pointer capture bugs.
+//! Drag & drop account reordering using mouse events on a dedicated handle.
+//! Only triggers when the user grabs the ≡ handle on the left of each card.
+//! Uses mousedown/mousemove/mouseup (not pointer events) for WebView2 reliability.
 
 /**
  * Attach drag & drop handlers to all account cards inside `container`.
- * `onReorder(srcId, targetId)` is called when the user drops a card onto another card.
+ * Drag is only initiated from the `.card-drag-handle` element.
+ * `onReorder(srcId, targetId)` is called when the user drops a card onto another.
  */
 export function setupDragDrop(container, accountListEl, onReorder) {
   let dragState = null;
@@ -18,15 +19,17 @@ export function setupDragDrop(container, accountListEl, onReorder) {
     accountListEl.querySelectorAll(".drag-over").forEach((c) => c.classList.remove("drag-over"));
   }
 
-  function onPointerDown(e) {
-    // Already tracking a drag, ignore
-    if (dragState) return;
-    // Left button only, skip if clicking on code (copy click)
+  function onMouseDown(e) {
+    // Left button only
     if (e.button !== 0) return;
-    if (e.target.closest(".card-code") || e.target.closest(".card-ring")) return;
+    // Only start drag from the handle
+    const handle = e.target.closest(".card-drag-handle");
+    if (!handle) return;
 
-    const card = e.target.closest(".account-card");
+    const card = handle.closest(".account-card");
     if (!card) return;
+
+    e.preventDefault(); // prevent text selection
 
     dragState = {
       srcId: card.dataset.id,
@@ -36,28 +39,26 @@ export function setupDragDrop(container, accountListEl, onReorder) {
       moved: false,
     };
 
-    // Attach move/up/cancel to document so we track reliably even outside the card
-    document.addEventListener("pointermove", onPointerMove);
-    document.addEventListener("pointerup", onPointerUp);
-    document.addEventListener("pointercancel", onPointerCancel);
+    document.addEventListener("mousemove", onMouseMove);
+    document.addEventListener("mouseup", onMouseUp);
+    window.addEventListener("blur", cancelDrag);
   }
 
-  function onPointerMove(e) {
+  function onMouseMove(e) {
     if (!dragState) return;
 
     const dx = e.clientX - dragState.startX;
     const dy = e.clientY - dragState.startY;
 
-    // Require 4px movement to initiate drag (avoids false triggers on click)
+    // Require 4px movement to initiate drag
     if (!dragState.moved && Math.abs(dx) + Math.abs(dy) < 4) return;
 
     if (!dragState.moved) {
       dragState.moved = true;
       dragState.srcCard.classList.add("dragging");
-      e.preventDefault();
     }
 
-    // Temporarily hide the source card so elementFromPoint finds the card beneath
+    // Hide source card so elementFromPoint finds the card beneath
     dragState.srcCard.style.pointerEvents = "none";
     const cardBelow = getCardFromPoint(e.clientX, e.clientY);
     dragState.srcCard.style.pointerEvents = "";
@@ -69,17 +70,27 @@ export function setupDragDrop(container, accountListEl, onReorder) {
     }
   }
 
-  function onPointerUp(e) {
+  function cancelDrag() {
+    if (!dragState) return;
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+    window.removeEventListener("blur", cancelDrag);
+    dragState.srcCard.classList.remove("dragging");
+    clearDragOver();
+    dragState = null;
+  }
+
+  function onMouseUp(e) {
     if (!dragState) return;
 
-    document.removeEventListener("pointermove", onPointerMove);
-    document.removeEventListener("pointerup", onPointerUp);
-    document.removeEventListener("pointercancel", onPointerCancel);
+    document.removeEventListener("mousemove", onMouseMove);
+    document.removeEventListener("mouseup", onMouseUp);
+    window.removeEventListener("blur", cancelDrag);
 
     if (dragState.moved) {
       dragState.srcCard.classList.remove("dragging");
 
-      // Find target card using elementFromPoint
+      // Find target card
       dragState.srcCard.style.pointerEvents = "none";
       const cardBelow = getCardFromPoint(e.clientX, e.clientY);
       dragState.srcCard.style.pointerEvents = "";
@@ -97,18 +108,6 @@ export function setupDragDrop(container, accountListEl, onReorder) {
     dragState = null;
   }
 
-  function onPointerCancel() {
-    if (!dragState) return;
-
-    document.removeEventListener("pointermove", onPointerMove);
-    document.removeEventListener("pointerup", onPointerUp);
-    document.removeEventListener("pointercancel", onPointerCancel);
-
-    dragState.srcCard.classList.remove("dragging");
-    clearDragOver();
-    dragState = null;
-  }
-
-  // Delegated pointerdown on container (works for dynamically created cards)
-  container.addEventListener("pointerdown", onPointerDown);
+  // Delegated mousedown on container — only triggers via .card-drag-handle
+  container.addEventListener("mousedown", onMouseDown);
 }
