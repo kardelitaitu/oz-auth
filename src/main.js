@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import QRCode from "qrcode";
 import { refreshCodes, updateBars, startCountdown, stopCountdown } from "./js/totp.js";
 import { renderAccounts, setupAccountDialog } from "./js/accounts.js";
 import { createClipboardManager } from "./js/clipboard.js";
@@ -42,6 +43,10 @@ const deleteConfirmOverlay = document.getElementById("delete-confirm-overlay");
 const deleteConfirmMsg = document.getElementById("delete-confirm-msg");
 const deleteConfirmSubmit = document.getElementById("delete-confirm-submit");
 const deleteConfirmCancel = document.getElementById("delete-confirm-cancel");
+const qrPopup = document.getElementById("qr-popup");
+const qrCanvas = document.getElementById("qr-canvas");
+const qrTitle = document.getElementById("qr-title");
+const qrCloseBtn = document.getElementById("qr-close-btn");
 
 // ── Shared state ───────────────────────────────────────────
 const accounts = [];
@@ -169,6 +174,33 @@ document.addEventListener("click", (e) => {
 contextMenu.querySelector('[data-action="edit"]').addEventListener("click", () => {
   if (contextAccountId) accountDialog.openEdit(contextAccountId);
   hideContextMenu();
+});
+
+contextMenu.querySelector('[data-action="qr"]').addEventListener("click", async () => {
+  if (!contextAccountId) return;
+  hideContextMenu();
+  const account = accounts.find((a) => a.id === contextAccountId);
+  if (!account) return;
+  try {
+    const uri = await invoke("get_otpauth_uri", { accountId: contextAccountId });
+    qrTitle.textContent = `${account.issuer} — ${account.label}`;
+    // Generate QR code on canvas
+    QRCode.toCanvas(qrCanvas, uri, {
+      width: 200,
+      margin: 1,
+      color: { dark: "#1e1e1e", light: "#ffffff" },
+    });
+    qrPopup.classList.remove("hidden");
+    qrCloseBtn.focus();
+  } catch (e) {
+    toast(typeof e === "string" ? e : "Failed to generate QR code", true);
+  }
+});
+
+qrCloseBtn.addEventListener("click", () => {
+  const ctx = qrCanvas.getContext("2d");
+  ctx.clearRect(0, 0, qrCanvas.width, qrCanvas.height);
+  qrPopup.classList.add("hidden");
 });
 
 contextMenu.querySelector('[data-action="delete"]').addEventListener("click", () => {
@@ -393,6 +425,7 @@ document.addEventListener("keydown", async (e) => {
     dialog.classList.add("hidden");
     settingsOverlay.classList.add("hidden");
     deleteConfirmOverlay.classList.add("hidden");
+    qrPopup.classList.add("hidden");
     pendingDeleteId = null;
     hideContextMenu();
     searchInput.blur();

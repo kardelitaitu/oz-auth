@@ -77,7 +77,9 @@ export function openSettings(config) {
     html += `
       <div class="settings-section">
         <h3>Backup</h3>
-        <p style="font-size:12px;color:var(--btn-color);margin-bottom:4px;">Find <code>.auth</code> file next to the app .exe</p>
+        <button class="settings-btn" id="backup-keys-btn">Backup all keys to file</button>
+        <p style="font-size:11px;color:var(--warn-color);margin-top:6px;line-height:1.4;">⚠ Warning: This exports ALL secrets in plain text.<br>Keep the file secure and never share it.</p>
+        <p style="font-size:12px;color:var(--btn-color);margin-top:8px;">Find <code>.auth</code> file next to the app .exe</p>
         <p style="font-size:11px;color:var(--btn-color);line-height:1.4;">To export: copy the <code>.auth</code> file to a safe location.<br>To import: replace the <code>.auth</code> file and restart.</p>
       </div>
       <div class="settings-section">
@@ -144,6 +146,42 @@ export function openSettings(config) {
       const val = parseInt(e.target.value, 10);
       if (isNaN(val) || val < 0 || val > 300) return;
       saveField("clipboard_clear_seconds", val, onClipboardClearSecondsChanged);
+    });
+
+    // ── Backup all keys ──────────────────────────────
+    document.getElementById("backup-keys-btn").addEventListener("click", async () => {
+      if (!confirm("⚠ WARNING: This will export ALL your secret keys in plain text.\n\nKeep this file secure. Never share it or upload it online.\n\nContinue?")) {
+        return;
+      }
+      try {
+        const uris = await invoke("get_backup_uris");
+        if (!uris || uris.length === 0) {
+          toast("No accounts to backup", true);
+          return;
+        }
+        const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+        const lines = [
+          `# oz-auth backup — ${timestamp}`,
+          `# ${uris.length} account(s)`,
+          `# WARNING: Contains plain-text secrets. Keep this file secure.`,
+          "",
+          ...uris,
+          "",
+        ];
+        const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `oz-auth-backup-${timestamp}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast(`Backup saved — ${uris.length} account(s)`);
+        settingsOverlay.classList.add("hidden");
+      } catch (e) {
+        toast(typeof e === "string" ? e : "Backup failed", true);
+      }
     });
 
     if (hasPin) {

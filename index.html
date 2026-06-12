@@ -139,9 +139,20 @@
         </div>
       </div>
 
+      <!-- QR Code popup -->
+      <div id="qr-popup" class="hidden">
+        <div id="qr-card">
+          <h2 id="qr-title">QR Code</h2>
+          <canvas id="qr-canvas"></canvas>
+          <p id="qr-hint">Scan with another device to import this account</p>
+          <button id="qr-close-btn">Close</button>
+        </div>
+      </div>
+
       <!-- Right-click context menu -->
       <div id="context-menu" class="hidden">
         <div class="ctx-item" data-action="edit">✎ Edit</div>
+        <div class="ctx-item" data-action="qr">▣ Show QR Code</div>
         <div class="ctx-item ctx-delete" data-action="delete">✕ Delete</div>
       </div>
 

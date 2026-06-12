@@ -1430,3 +1430,85 @@ pub fn list_accounts(
 ) -> Result<Vec<AccountSummary>, String> {
     list_accounts_impl(search_query.as_deref(), &state)
 }
+
+fn get_otpauth_uri_impl(account_id: &str, state: &AppState) -> Result<String, String> {
+    let data = try_load()?;
+    let key_wrapper = state.get_key()?;
+    let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
+    let mut accounts = load_accounts(&data, key)?;
+
+    let account = accounts
+        .iter()
+        .find(|a| a.id == account_id)
+        .ok_or_else(|| format!("account not found: {account_id}"))?;
+
+    let secret_b32 = base32::encode(Alphabet::Rfc4648 { padding: false }, &account.secret);
+    let issuer_enc = urlencoding(&account.issuer);
+    let label_enc = urlencoding(&account.label);
+    let algo_str = match account.algorithm {
+        Algorithm::SHA1 => "SHA1",
+        Algorithm::SHA256 => "SHA256",
+        Algorithm::SHA512 => "SHA512",
+    };
+
+    let uri = format!(
+        "otpauth://totp/{}:{}?secret={}&issuer={}&algorithm={}&digits={}&period={}",
+        issuer_enc, label_enc, secret_b32, issuer_enc, algo_str, account.digits, account.period
+    );
+
+    zeroize_accounts(&mut accounts);
+    Ok(uri)
+}
+
+/// URL-encode a string for use in an otpauth URI path or query.
+fn urlencoding(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for byte in s.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            _ => {
+                out.push('%');
+                out.push_str(&format!("{:02X}", byte));
+            }
+        }
+    }
+    out
+}
+
+#[tauri::command]
+pub fn get_otpauth_uri(account_id: String, state: State<'_, AppState>) -> Result<String, String> {
+    get_otpauth_uri_impl(&account_id, &state)
+}
+
+fn get_backup_uris_impl(state: &AppState) -> Result<Vec<String>, String> {
+    let data = try_load()?;
+    let key_wrapper = state.get_key()?;
+    let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
+    let mut accounts = load_accounts(&data, key)?;
+
+    let mut uris = Vec::with_capacity(accounts.len());
+    for account in &accounts {
+        let secret_b32 = base32::encode(Alphabet::Rfc4648 { padding: false }, &account.secret);
+        let issuer_enc = urlencoding(&account.issuer);
+        let label_enc = urlencoding(&account.label);
+        let algo_str = match account.algorithm {
+            Algorithm::SHA1 => "SHA1",
+            Algorithm::SHA256 => "SHA256",
+            Algorithm::SHA512 => "SHA512",
+        };
+        uris.push(format!(
+            "otpauth://totp/{}:{}?secret={}&issuer={}&algorithm={}&digits={}&period={}",
+            issuer_enc, label_enc, secret_b32, issuer_enc, algo_str, account.digits, account.period
+        ));
+    }
+
+    zeroize_accounts(&mut accounts);
+    Ok(uris)
+}
+
+#[tauri::command]
+pub fn get_backup_uris(state: State<'_, AppState>) -> Result<Vec<String>, String> {
+    get_backup_uris_impl(&state)
+}

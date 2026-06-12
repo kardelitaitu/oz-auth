@@ -1,65 +1,55 @@
 # Changelog
 
-All notable changes to oz-auth will be documented in this file.
+All notable changes to oz-auth.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
----
-
-## [0.1.0] - 2026-06-12
+## [0.1.1] — Unreleased
 
 ### Added
+- **QR Code on right-click** — generate a QR code from any account for easy import on another device
+- **Backup all keys** — export all account secrets as `otpauth://` URIs to a `.txt` file from Settings (with ⚠ plaintext warning)
+- **Search icon** — magnifying glass inside the search box with focus highlight
+- **New pin icon** — replaced outlined pin with a filled thumbtack SVG in the titlebar
+- **Titlebar icon animation** — pin, minimize, and close buttons now wiggle on hover (matching toolbar icons)
+- **Rounded search box** — softer `8px` border-radius and `"Search . . ."` placeholder
 
-#### TOTP Engine
-- RFC 6238 compliant TOTP code generation via `totp-rs` v5
-- Support for SHA-1, SHA-256, SHA-512 algorithms
-- Support for 6 and 8 digit codes
-- Configurable time period (30s default, 60s supported)
-- Real-time countdown timer per code
-- `otpauth://` URI parsing for easy account import
+## [0.1.0] — 2026-06-13
 
-#### Account Management
-- Add accounts via manual entry or `otpauth://` URI paste
-- Edit account issuer, label, and sort order
-- Delete accounts with confirmation
-- Drag-and-drop account reordering
-- Real-time search/filter by issuer or label
+Initial release.
 
-#### Security
-- AES-256-GCM encryption for stored secrets
-- Argon2id key derivation from user PIN (memory-hard, GPU-resistant)
-- Auto-lock after configurable inactivity timeout (default 5 min)
-- Clipboard auto-clear after configurable timeout (default 30s)
-- Zeroizing of all secrets and keys after use
-- `VirtualLock` on Windows to prevent key paging to swap
-- Process mitigation policies (blocks dynamic code injection, remote image loads)
-- Core dump prevention on Windows and Linux
+### Core
+- TOTP code generation — RFC 6238 compliant with SHA-1, SHA-256, and SHA-512
+- 6-digit and 8-digit codes, 30s and 60s periods
+- Auto-refreshing codes with countdown ring animation
+- System tray icon with time-remaining pie indicator
 
-#### Storage
-- Portable `.auth` JSON file alongside the `.exe`
-- Combined config, accounts, and diagnostics in one file
-- Auto-repair of inconsistent storage states
-- Export/import via simple file copy
+### Security
+- AES-256-GCM encryption for account secrets at rest
+- Argon2 key derivation for PIN-based encryption
+- Memory hardening — secrets and keys zeroized after use, `VirtualLock` on Windows, core dump prevention
+- PIN protection with auto-lock on inactivity (configurable timeout)
+- Clipboard auto-clear after configurable seconds
 
-#### UI/UX
-- Custom frameless titlebar with drag region
-- Pin window on top toggle
-- Dark and light themes (follows system preference)
-- System tray with real-time countdown pie icon
-- Left-click tray toggles window visibility
-- Keyboard shortcuts: `Ctrl+N` (add), `Ctrl+F` (search), `Ctrl+L` (lock), `Escape` (dismiss)
-- Toast notifications for actions (account added, code copied, etc.)
-- Responsive design with smooth theme transitions
+### Account Management
+- Add accounts manually (issuer, label, secret) or paste `otpauth://` URIs
+- Edit issuer/label, delete accounts with confirmation dialog
+- Drag & drop reorder via ≡ handle
+- Right-click context menu (Edit / Delete)
+- Search/filter accounts by issuer or label (Ctrl+F)
 
-#### Diagnostics
-- Crash logging to `{exe}.crash` file
-- In-memory event log with automatic trimming
+### UI
+- Frameless custom titlebar with minimize, always-on-top, and close buttons
+- Dark/light theme toggle with system preference detection
+- Toolbar icon animations (wiggle, bounce, spin)
+- Toast notifications for actions and errors
+- Keyboard shortcuts: Ctrl+N (add), Ctrl+F (search), Ctrl+L (lock), Escape (close dialogs)
 
-#### Testing
-- 249 tests covering crypto, storage, TOTP generation, account CRUD, auth flows, and more
+### Backward Compatibility
+- Version-aware `.auth` file format (v1 → v2 auto-upgrade)
+- `#[serde(default)]` on all optional account fields (algorithm, digits, period, sort_order, timestamps)
+- Corrupted or missing `.auth` file gracefully falls back to defaults
 
-### Security Notes
-- QR code scanning intentionally removed to prevent camera/image processing attack surface
-- Secrets never leave the Rust backend — only `AccountSummary` (no secret field) sent to frontend
-- No network permissions — fully offline operation
+### Testing
+- 309+ tests across all modules
+- RFC 6238 test vectors for all three SHA algorithms
+- Property-based testing with proptest
+- Full PIN lifecycle, CRUD, crypto, and edge case coverage

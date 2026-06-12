@@ -10,7 +10,8 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.0"
+    "@tauri-apps/api": "^2.0.0",
+    "qrcode": "^1.5.4"
   },
   "devDependencies": {
     "eslint": "^10.4.1",
