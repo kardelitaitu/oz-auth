@@ -41,6 +41,8 @@ pub struct AuthData {
     pub version: u32,
     pub config: crate::config::Config,
     pub accounts: AccountsPayload,
+    /// In-memory event log persisted to `.auth` file.
+    #[serde(default)]
     pub log: String,
     /// Optional user notes about this auth file. Added in v2.
     #[serde(default)]
@@ -71,7 +73,7 @@ pub struct AccountsPayload {
     pub data_json: String,
 }
 
-const CURRENT_VERSION: u32 = 2;
+pub const CURRENT_VERSION: u32 = 2;
 
 /// Mutex that serializes tests touching the shared `.auth` file.
 #[cfg(test)]
@@ -752,7 +754,7 @@ mod tests {
 
     #[test]
     fn test_try_load_reconcile_saves_to_disk() {
-        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         // Remove any existing auth file
         let path = auth_path();
         let _ = std::fs::remove_file(&path);
@@ -785,7 +787,7 @@ mod tests {
 
     #[test]
     fn test_exists_returns_false_when_no_file() {
-        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let path = auth_path();
         let _ = std::fs::remove_file(&path);
         assert!(!exists(), "exists() should return false when no .auth file");
@@ -793,12 +795,15 @@ mod tests {
 
     #[test]
     fn test_try_load_with_corrupted_json_returns_error() {
-        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let path = auth_path();
         let _ = std::fs::remove_file(&path);
         std::fs::write(&path, "{{corrupted json[[[").unwrap();
         let result = try_load();
-        assert!(result.is_err(), "try_load must return Err for corrupted JSON");
+        assert!(
+            result.is_err(),
+            "try_load must return Err for corrupted JSON"
+        );
         let err = result.unwrap_err();
         assert!(err.contains("parse"), "error should mention parse: {err}");
         let _ = std::fs::remove_file(&path);
@@ -816,9 +821,15 @@ mod tests {
             data_json: String::new(),
         };
         let result = decrypt_accounts(&payload, &key);
-        assert!(result.is_err(), "non-JSON plaintext must fail to parse as accounts");
+        assert!(
+            result.is_err(),
+            "non-JSON plaintext must fail to parse as accounts"
+        );
         let err = result.unwrap_err();
-        assert!(err.contains("parse"), "error must mention parse failure: {err}");
+        assert!(
+            err.contains("parse"),
+            "error must mention parse failure: {err}"
+        );
     }
 
     #[test]
@@ -832,7 +843,10 @@ mod tests {
         };
         let key = [0xCCu8; 32];
         let result = decrypt_accounts(&payload, &key);
-        assert!(result.is_err(), "invalid JSON in plaintext payload must fail");
+        assert!(
+            result.is_err(),
+            "invalid JSON in plaintext payload must fail"
+        );
     }
 
     // ── Version upgrade & compatibility tests ─────────────────
@@ -903,7 +917,7 @@ mod tests {
 
     #[test]
     fn test_upgrade_from_missing_version_saves_to_disk() {
-        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let path = auth_path();
         let _ = std::fs::remove_file(&path);
 
@@ -917,7 +931,10 @@ mod tests {
         // Verify file was rewritten with version
         let raw = std::fs::read_to_string(&path).unwrap();
         let saved: AuthData = serde_json::from_str(&raw).unwrap();
-        assert_eq!(saved.version, CURRENT_VERSION, "file must persist the upgrade");
+        assert_eq!(
+            saved.version, CURRENT_VERSION,
+            "file must persist the upgrade"
+        );
 
         let _ = std::fs::remove_file(&path);
     }
@@ -946,14 +963,17 @@ mod tests {
         let mut data: AuthData = serde_json::from_str(json).unwrap();
         assert_eq!(data.version, 999);
         // upgrade_data should NOT bump version (it's already > CURRENT)
-        assert!(!upgrade_data(&mut data), "version > CURRENT must not be upgraded");
+        assert!(
+            !upgrade_data(&mut data),
+            "version > CURRENT must not be upgraded"
+        );
         assert_eq!(data.version, 999, "version must be preserved");
     }
 
     #[test]
     fn test_version_greater_than_current_does_not_crash_on_load() {
         // End-to-end: write a v999 file to disk, load it, verify no crash
-        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let path = auth_path();
         let _ = std::fs::remove_file(&path);
 
@@ -967,7 +987,10 @@ mod tests {
 
         // Verify file was NOT rewritten (should still have v999, not CURRENT_VERSION=2)
         let raw = std::fs::read_to_string(&path).unwrap();
-        assert!(!raw.contains(r#""version":2"#), "file must not be rewritten for version > CURRENT");
+        assert!(
+            !raw.contains(r#""version":2"#),
+            "file must not be rewritten for version > CURRENT"
+        );
 
         let _ = std::fs::remove_file(&path);
     }
@@ -997,7 +1020,7 @@ mod tests {
     #[test]
     fn test_v1_file_upgraded_to_v2_on_disk() {
         // Write a v1 file to disk, load it, verify it gets upgraded to v2
-        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let path = auth_path();
         let _ = std::fs::remove_file(&path);
 
@@ -1020,7 +1043,7 @@ mod tests {
     #[test]
     fn test_v2_file_with_notes_preserved_on_roundtrip() {
         // A v2 file with custom notes should preserve them through save/load
-        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let path = auth_path();
         let _ = std::fs::remove_file(&path);
 
@@ -1045,15 +1068,88 @@ mod tests {
     }
 
     #[test]
+    fn test_minimal_auth_file_fills_all_defaults() {
+        // A truly minimal .auth file with only password_protected in config
+        // and accounts.encrypted + data_json. Everything else should use serde defaults.
+        let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let path = auth_path();
+        let _ = std::fs::remove_file(&path);
+
+        let minimal = r#"{"config":{"password_protected":false},"accounts":{"encrypted":false,"data_json":"[]"}}"#;
+        std::fs::write(&path, minimal).unwrap();
+
+        let data = try_load().unwrap();
+
+        // Version: missing → 0 → upgraded to CURRENT_VERSION
+        assert_eq!(data.version, CURRENT_VERSION, "version must be upgraded");
+
+        // Config: all missing fields must have defaults
+        assert_eq!(data.config.width, 320, "default width");
+        assert_eq!(data.config.height, 480, "default height");
+        assert_eq!(data.config.left, 100, "default left");
+        assert_eq!(data.config.top, 100, "default top");
+        assert!(!data.config.always_on_top, "default always_on_top");
+        assert!(!data.config.password_protected, "preserved from JSON");
+        assert!(data.config.password_salt.is_empty(), "default salt");
+        assert_eq!(data.config.theme, "dark", "default theme");
+        assert_eq!(data.config.lock_timeout_minutes, 5, "default lock timeout");
+        assert_eq!(
+            data.config.clipboard_clear_seconds, 30,
+            "default clipboard clear"
+        );
+
+        // Accounts: encrypted + data_json preserved
+        assert!(!data.accounts.encrypted, "preserved from JSON");
+        assert_eq!(data.accounts.data_json, "[]", "preserved from JSON");
+        assert!(data.accounts.nonce_hex.is_none(), "default nonce_hex");
+        assert!(
+            data.accounts.ciphertext_hex.is_none(),
+            "default ciphertext_hex"
+        );
+
+        // Notes: missing → empty via serde default
+        assert!(data.notes.is_empty(), "default notes");
+
+        // Log: missing → empty via serde default
+        assert!(data.log.is_empty(), "default log");
+
+        // Verify the file was rewritten on disk with all defaults filled in
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let saved: AuthData = serde_json::from_str(&raw).unwrap();
+        assert_eq!(saved.version, CURRENT_VERSION, "upgraded version persisted");
+        assert_eq!(saved.config.width, 320, "width persisted");
+        assert_eq!(saved.config.height, 480, "height persisted");
+        assert_eq!(saved.config.left, 100, "left persisted");
+        assert_eq!(saved.config.top, 100, "top persisted");
+        assert!(!saved.config.always_on_top, "always_on_top persisted");
+        assert_eq!(saved.config.theme, "dark", "theme persisted");
+        assert_eq!(
+            saved.config.lock_timeout_minutes, 5,
+            "lock timeout persisted"
+        );
+        assert_eq!(
+            saved.config.clipboard_clear_seconds, 30,
+            "clipboard clear persisted"
+        );
+        assert!(saved.notes.is_empty(), "notes persisted");
+        assert!(saved.log.is_empty(), "log persisted");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
     fn test_exists_returns_true_when_file_present() {
-        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         let path = auth_path();
         let _ = std::fs::remove_file(&path);
         // Create a fresh auth file
         let data = fresh();
         let json = serde_json::to_string_pretty(&data).unwrap();
         std::fs::write(&path, &json).unwrap();
-        assert!(exists(), "exists() should return true when .auth file exists");
+        assert!(
+            exists(),
+            "exists() should return true when .auth file exists"
+        );
         let _ = std::fs::remove_file(&path);
     }
 }

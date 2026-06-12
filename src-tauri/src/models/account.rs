@@ -1,39 +1,64 @@
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
+use serde::{Deserialize, Serialize};#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
     pub id: String,     // UUID v4
     pub issuer: String, // "Google", "GitHub", etc.
     pub label: String,  // "user@example.com"
+        #[serde(default)]
     pub algorithm: Algorithm,
+    #[serde(default = "default_digits")]
     pub digits: u8,      // 6 or 8
+    #[serde(default = "default_period")]
     pub period: u32,     // 30 (seconds)
     pub secret: Vec<u8>, // Raw secret key bytes
+    #[serde(default)]
     pub sort_order: u32,
+    #[serde(default = "default_created_at")]
     pub created_at: DateTime<Utc>,
+    #[serde(default = "default_updated_at")]
     pub updated_at: DateTime<Utc>,
-}
-
-/// Frontend-safe view — no secret field exposed over IPC.
+}/// Frontend-safe view — no secret field exposed over IPC.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AccountSummary {
     pub id: String,
     pub issuer: String,
     pub label: String,
+        #[serde(default)]
     pub algorithm: Algorithm,
+    #[serde(default = "default_digits")]
     pub digits: u8,
+    #[serde(default = "default_period")]
     pub period: u32,
+    #[serde(default)]
     pub sort_order: u32,
+    #[serde(default = "default_created_at")]
     pub created_at: DateTime<Utc>,
+    #[serde(default = "default_updated_at")]
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum Algorithm {
+    #[default]
     SHA1,
     SHA256,
     SHA512,
+}
+
+fn default_digits() -> u8 {
+    6
+}
+
+fn default_period() -> u32 {
+    30
+}
+
+fn default_created_at() -> DateTime<Utc> {
+    Utc::now()
+}
+
+fn default_updated_at() -> DateTime<Utc> {
+    Utc::now()
 }
 
 impl From<&Account> for AccountSummary {
@@ -99,6 +124,56 @@ mod tests {
             let summary = AccountSummary::from(&account);
             assert_eq!(format!("{:?}", summary.algorithm), format!("{:?}", algo));
         }
+    }
+
+    #[test]
+    fn test_account_missing_algorithm_defaults_to_sha1() {
+        // Old file without algorithm field should default to SHA1
+        let json = r#"{"id":"no-algo","issuer":"Test","label":"t@t.com","digits":6,"period":30,"secret":[1,2,3],"sort_order":0,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}"#;
+        let account: Account = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(account.algorithm, Algorithm::SHA1),
+            "missing algorithm must default to SHA1"
+        );
+        assert_eq!(account.id, "no-algo");
+        assert_eq!(account.digits, 6);
+    }
+
+    #[test]
+    fn test_account_summary_missing_algorithm_defaults_to_sha1() {
+        let json = r#"{"id":"no-algo-summary","issuer":"Test","label":"t@t.com","digits":6,"period":30,"sort_order":0,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}"#;
+        let summary: AccountSummary = serde_json::from_str(json).unwrap();
+        assert!(
+            matches!(summary.algorithm, Algorithm::SHA1),
+            "missing algorithm must default to SHA1"
+        );
+        assert_eq!(summary.id, "no-algo-summary");
+    }
+
+    #[test]
+    fn test_account_missing_all_optionals_uses_defaults() {
+        // Minimal Account JSON — only core identity fields and secret
+        let json = r#"{"id":"minimal","issuer":"X","label":"x@x.com","secret":[1,2,3]}"#;
+        let account: Account = serde_json::from_str(json).unwrap();
+        assert!(matches!(account.algorithm, Algorithm::SHA1));
+        assert_eq!(account.digits, 6);
+        assert_eq!(account.period, 30);
+        assert_eq!(account.sort_order, 0);
+        // created_at and updated_at are set to Utc::now() — just verify they parse
+        assert!(account.created_at.timestamp() > 0, "created_at should have a valid timestamp");
+        assert!(account.updated_at.timestamp() > 0, "updated_at should have a valid timestamp");
+    }
+
+    #[test]
+    fn test_account_summary_missing_all_optionals_uses_defaults() {
+        let json = r#"{"id":"minimal-summary","issuer":"Y","label":"y@y.com"}"#;
+        let summary: AccountSummary = serde_json::from_str(json).unwrap();
+        assert!(matches!(summary.algorithm, Algorithm::SHA1));
+        assert_eq!(summary.digits, 6);
+        assert_eq!(summary.period, 30);
+        assert_eq!(summary.sort_order, 0);
+        assert!(summary.created_at.timestamp() > 0, "created_at should have a valid timestamp");
+        assert!(summary.updated_at.timestamp() > 0, "updated_at should have a valid timestamp");
     }
 
     #[test]

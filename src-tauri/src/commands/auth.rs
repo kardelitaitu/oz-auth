@@ -202,7 +202,9 @@ mod tests {
     }
 
     fn with_fs_lock(f: impl FnOnce()) {
-        let _lock = crate::storage::auth_file::FS_TEST_MUTEX.lock().unwrap();
+        let _lock = crate::storage::auth_file::FS_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         f();
     }
 
@@ -775,7 +777,7 @@ mod tests {
 
             // try_load should return fresh() on parse failure (via load() fallback)
             let data = crate::storage::load();
-            assert_eq!(data.version, 1);
+            assert_eq!(data.version, crate::storage::auth_file::CURRENT_VERSION);
             assert!(!data.config.password_protected);
             cleanup_auth_file();
         });
