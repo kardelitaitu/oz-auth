@@ -80,7 +80,6 @@ The output is in `src-tauri/target/release/`. Copy `oz-auth.exe` anywhere — it
 
 1. Click **+** (or `Ctrl+N`) to open the Add Account dialog
 2. Enter **Issuer** (e.g. "Google"), **Label** (e.g. "user@gmail.com"), and **Secret Key**
-3. Or click **📷 Scan QR Code** to scan from camera or paste an image
 
 ### Managing Accounts
 
@@ -155,7 +154,6 @@ Every layer is built to minimize the window where secrets exist in plaintext mem
 │              FRONTEND (WebView)           │
 │  Vanilla JS + Vite + @tauri-apps/api     │
 │  • Account cards, countdown, drag & drop │
-│  • QR scanner (getUserMedia + jsqr)      │
 │  • Lock screen, settings, themes         │
 └──────────────────┬───────────────────────┘
                    │  invoke() — Tauri IPC
@@ -178,7 +176,7 @@ Every layer is built to minimize the window where secrets exist in plaintext mem
 | Frontend | Vanilla HTML/CSS/JS + Vite |
 | TOTP Engine | `totp-rs` v5 (RFC 6238) |
 | Encryption | `aes-gcm` v0.10 + `argon2` v0.5 |
-| QR Scanning | `jsqr` v1.4 (frontend) |
+
 | Memory Security | `zeroize` v1.8 |
 
 ---
@@ -215,7 +213,7 @@ tauri-authenticator/
 │       ├── main.rs             # Entry, process mitigation
 │       ├── lib.rs              # App builder, AppState, IPC registry
 │       ├── commands/
-│       │   ├── totp.rs         # TOTP code generation (23 tests)
+│       │   ├── totp.rs         # TOTP code generation
 │       │   ├── accounts.rs     # CRUD operations
 │       │   └── auth.rs         # Lock/unlock, PIN, backup
 │       ├── models/
@@ -239,7 +237,7 @@ tauri-authenticator/
 ```bash
 # Rust checks
 cargo check                    # Type-check only
-cargo test                     # Run tests (23 tests)
+cargo test                     # Run tests (116 tests)
 cargo clippy -- -D warnings    # Lint with strict mode
 cargo fmt --check              # Verify formatting
 
