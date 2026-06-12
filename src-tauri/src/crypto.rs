@@ -15,8 +15,7 @@ pub fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
     // Pad PIN to constant length to prevent PIN-length timing leakage
     let mut padded = password.as_bytes().to_vec();
     padded.resize(128, 0u8);
-    let result = argon2::Argon2::default()
-        .hash_password_into(&padded, salt, &mut key);
+    let result = argon2::Argon2::default().hash_password_into(&padded, salt, &mut key);
     // Zeroize the padded buffer immediately
     padded.zeroize();
     result.map_err(|e| format!("key derivation failed: {e}"))?;
@@ -52,8 +51,7 @@ pub fn decrypt(ciphertext: &[u8], nonce_bytes: &[u8], key: &[u8; 32]) -> Result<
         .decrypt(nonce, ciphertext)
         .map_err(|_| "wrong password or corrupted data".to_string())?;
     // String::from_utf8 consumes the Vec — no clone needed
-    let result = String::from_utf8(plaintext)
-        .map_err(|e| format!("invalid utf-8: {e}"))?;
+    let result = String::from_utf8(plaintext).map_err(|e| format!("invalid utf-8: {e}"))?;
     Ok(result)
 }
 
@@ -215,7 +213,10 @@ mod tests {
         // Nonces must be different (randomly generated)
         assert_ne!(nonce1, nonce2, "nonces must be unique per encryption");
         // Ciphertexts must be different (different nonces → different GCM output)
-        assert_ne!(ct1, ct2, "different nonces must produce different ciphertexts");
+        assert_ne!(
+            ct1, ct2,
+            "different nonces must produce different ciphertexts"
+        );
         // Both must decrypt correctly
         let mut pt1 = decrypt(&ct1, &nonce1, &key).unwrap();
         let mut pt2 = decrypt(&ct2, &nonce2, &key).unwrap();
@@ -312,7 +313,11 @@ mod tests {
         let salt = generate_salt();
         let null_pin = "\0\0\0";
         let mut key = derive_key(null_pin, &*salt).unwrap();
-        assert_eq!(key.len(), 32, "null bytes in PIN must still produce 32-byte key");
+        assert_eq!(
+            key.len(),
+            32,
+            "null bytes in PIN must still produce 32-byte key"
+        );
         // Verify the key can actually encrypt/decrypt
         let (nonce, ct) = encrypt("works", &key).unwrap();
         let mut pt = decrypt(&ct, &nonce, &key).unwrap();
@@ -351,7 +356,7 @@ mod tests {
     fn test_derive_key_with_unicode_pin() {
         // Unicode characters are multi-byte — padding must handle them correctly
         let salt = generate_salt();
-        let unicode_pin = "🔑🔐🔏🔒";  // 4 emoji chars, each 4 bytes = 16 bytes
+        let unicode_pin = "🔑🔐🔏🔒"; // 4 emoji chars, each 4 bytes = 16 bytes
         let mut key = derive_key(unicode_pin, &*salt).unwrap();
         assert_eq!(key.len(), 32);
         let (nonce, ct) = encrypt("unicode pin works", &key).unwrap();

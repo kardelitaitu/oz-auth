@@ -680,7 +680,10 @@ mod tests {
 
             let result = generate_all_codes_impl(&state);
             // The batch fails entirely because make_totp (via validate_secret_length) errors.
-            assert!(result.is_err(), "corrupted account causes entire batch to fail");
+            assert!(
+                result.is_err(),
+                "corrupted account causes entire batch to fail"
+            );
             let err = result.unwrap_err();
             assert!(
                 err.contains("cannot be empty"),
@@ -786,7 +789,10 @@ mod tests {
             let (_, r1) = generate_code_impl("test-1", &state).unwrap();
             let (_, r2) = generate_code_impl("test-1", &state).unwrap();
             // r2 should be <= r1 (time moves forward)
-            assert!(r2 <= r1, "remaining should decrease or stay same: {r2} > {r1}");
+            assert!(
+                r2 <= r1,
+                "remaining should decrease or stay same: {r2} > {r1}"
+            );
             assert!(r1 > 0 && r1 <= 30, "r1 out of range: {r1}");
             assert!(r2 > 0 && r2 <= 30, "r2 out of range: {r2}");
             cleanup_auth_file();
@@ -878,11 +884,17 @@ mod tests {
         let secret = b"12345678901234567890";
         for digits in [6u8, 8u8] {
             let account = test_account(secret, Algorithm::SHA1, digits);
-            assert!(make_totp(&account).is_ok(), "digits={digits} must be accepted");
+            assert!(
+                make_totp(&account).is_ok(),
+                "digits={digits} must be accepted"
+            );
         }
         for digits in [0u8, 1u8, 5u8, 7u8, 9u8, 255u8] {
             let account = test_account(secret, Algorithm::SHA1, digits);
-            assert!(make_totp(&account).is_err(), "digits={digits} must be rejected");
+            assert!(
+                make_totp(&account).is_err(),
+                "digits={digits} must be rejected"
+            );
         }
     }
 
@@ -898,7 +910,10 @@ mod tests {
             let result = generate_code_impl("", &state);
             assert!(result.is_err(), "empty account ID must fail");
             let err = result.unwrap_err();
-            assert!(err.contains("not found"), "error should mention 'not found': {err}");
+            assert!(
+                err.contains("not found"),
+                "error should mention 'not found': {err}"
+            );
             cleanup_auth_file();
         });
     }
@@ -935,12 +950,18 @@ mod tests {
         let t1 = 20u64;
         let r0 = period - (t0 % period);
         let r1 = period - (t1 % period);
-        assert!(r1 <= r0, "remaining must decrease as time advances: {r1} > {r0}");
+        assert!(
+            r1 <= r0,
+            "remaining must decrease as time advances: {r1} > {r0}"
+        );
 
         // After period boundary, remaining resets to period
         let t2 = period; // exactly one period later
         let r2 = period - (t2 % period);
-        assert_eq!(r2, period, "at period boundary, remaining should equal period");
+        assert_eq!(
+            r2, period,
+            "at period boundary, remaining should equal period"
+        );
 
         // Code at t=0 and t=period should be different (different counters)
         assert_ne!(totp.generate(0), totp.generate(period));
@@ -959,7 +980,11 @@ mod tests {
         // t=59 → remaining=1
         assert_eq!(period - (59 % period), 1, "remaining should be 1 at t=59");
         // t=60 → remaining=60 (new window)
-        assert_eq!(period - (60 % period), 60, "remaining should reset to 60 at t=60");
+        assert_eq!(
+            period - (60 % period),
+            60,
+            "remaining should reset to 60 at t=60"
+        );
 
         // Code at t=0 and t=59 should be same (same counter = 0)
         assert_eq!(totp.generate(0), totp.generate(59));

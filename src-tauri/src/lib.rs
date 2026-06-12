@@ -10,6 +10,9 @@ pub mod storage;
 pub mod tray;
 pub mod utils;
 
+#[cfg(test)]
+mod tests_integration;
+
 use std::sync::Mutex;
 use tauri::window::Color;
 use tauri::Manager;
@@ -333,10 +336,7 @@ mod tests {
     fn test_get_app_name_returns_exe_stem() {
         let name = get_app_name();
         let stem = crate::paths::exe_stem();
-        assert_eq!(
-            name, stem,
-            "get_app_name must return the exe stem"
-        );
+        assert_eq!(name, stem, "get_app_name must return the exe stem");
     }
 
     // get_app_version takes tauri::AppHandle — cannot be called in unit tests.

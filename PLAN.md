@@ -17,7 +17,6 @@
 | **TOTP Library** | `totp-rs` — RFC 6238 compliant, SHA-1/256/512, `otpauth` URI support |
 | **Secure Storage** | Portable `.auth` JSON file alongside the `.exe` — AES-256-GCM encrypted secrets, Argon2id key derivation |
 | **System Tray** | `tauri` built-in (`tray-icon` feature) |
-| **QR Scanning** | Browser `MediaDevices` API + `jsQR` (or Rust-side `rqrr` crate) |
 
 ---
 
@@ -25,20 +24,20 @@
 
 ### 2.1 Core Features (MVP)
 
-- [ ] **TOTP Code Generation**
+- [x] **TOTP Code Generation**
   - RFC 6238 compliant (30-second default time step, 6-digit default code)
   - Support SHA-1, SHA-256, SHA-512 algorithms
   - Real-time countdown timer per code
   - One-click copy to clipboard
 
-- [ ] **Account Management**
+- [x] **Account Management**
   - Add account via **manual secret key entry**
-  - Add account via **QR code scan** (camera or image paste)
+  - Add account via **`otpauth://` URI paste**
   - Edit account name/issuer
   - Delete account
   - Reorder accounts (drag & drop)
 
-- [ ] **Portable Encrypted Storage**
+- [x] **Portable Encrypted Storage**
   - All data saved to a `.auth` JSON file next to the `.exe` (e.g. `app.exe` → `app.auth`)
   - Secrets encrypted with AES-256-GCM, key derived from user's PIN via Argon2id
   - App is fully portable — copy the `.exe` + `.auth` file anywhere
@@ -47,33 +46,34 @@
 
 ### 2.2 Security Features
 
-- [ ] **App Lock**
+- [x] **App Lock**
   - PIN or password lock on launch / after inactivity
   - PIN is used to derive the AES encryption key — no separate passphrase needed
 
-- [ ] **Clipboard Auto-Clear**
+- [x] **Clipboard Auto-Clear**
   - Copied codes auto-clear from clipboard after configurable timeout (default 30s)
 
-- [ ] **No Network**
+- [x] **No Network**
   - App requires no internet permissions — fully offline
 
 ### 2.3 Quality of Life
 
-- [ ] **System Tray**
+- [x] **System Tray**
   - Left-click toggles window visibility (show/hide)
   - Right-click context menu: Show, Quit
   - Tray icon shows a real-time countdown pie chart (TOTP timer)
 
-- [ ] **Dark / Light Theme**
+- [x] **Dark / Light Theme**
   - Follow system preference or manual toggle
 
-- [ ] **Search / Filter**
+- [x] **Search / Filter**
   - Quick search accounts by name or issuer
 
-- [ ] **Keyboard Shortcuts**
+- [x] **Keyboard Shortcuts**
   - `Ctrl+N` — Add account
   - `Ctrl+F` — Search
-  - `Ctrl+C` — Copy focused code
+  - `Ctrl+L` — Lock app
+  - `Escape` — Dismiss dialogs
 
 ---
 
@@ -87,7 +87,7 @@ tauri-authenticator/
 ├── AGENTS.md                        # AI agent instructions
 ├── README.md                        # User-facing docs
 ├── index.html                       # Vite entry point
-├── package.json                     # Frontend dependencies (Vite, @tauri-apps/api, jsqr)
+├── package.json                     # Frontend dependencies (Vite, @tauri-apps/api)
 ├── vite.config.js                   # Vite configuration
 ├── src/                             # Frontend (WebView)
 │   ├── main.js                      # Main app init, Tauri event listeners
@@ -97,12 +97,10 @@ tauri-authenticator/
 │   ├── js/
 │   │   ├── totp.js                  # TOTP display logic (countdown, refresh)
 │   │   ├── accounts.js              # Account CRUD UI operations
-│   │   ├── qr-scanner.js            # Camera QR scanner
-│   │   ├── clipboard.js             # Clipboard helpers
-│   │   └── lock.js                  # App lock screen logic
-│   └── assets/
-│       ├── icons/                   # App icons
-│       └── sounds/                  # Optional: copy/scan sounds
+│   │   ├── clipboard.js             # Clipboard helpers with auto-clear
+│   │   ├── dragdrop.js              # Drag-and-drop account reordering
+│   │   ├── lock.js                  # App lock screen logic
+│   │   └── settings.js              # Settings dialog (PIN, backup, clipboard)
 │
 ├── src-tauri/                       # Tauri backend (Rust)
 │   ├── Cargo.toml                   # Rust dependencies
@@ -144,9 +142,9 @@ tauri-authenticator/
 │                    FRONTEND (WebView)              │
 │                                                    │
 │  ┌─────────┐  ┌──────────┐  ┌───────────────┐    │
-│  │  UI     │  │ Account  │  │  QR Scanner   │    │
-│  │ (codes, │  │ List     │  │  (camera/     │    │
-│  │ timer)  │  │ Manager  │  │   paste)      │    │
+│  │  UI     │  │ Account  │  │  Settings     │    │
+│  │ (codes, │  │ List     │  │  (PIN,        │    │
+│  │ timer)  │  │ Manager  │  │   backup)     │    │
 │  └────┬────┘  └────┬─────┘  └───────┬───────┘    │
 │       │            │                │             │
 │       └────────────┼────────────────┘             │
@@ -352,13 +350,9 @@ The `.auth` file MUST remain visible (not hidden) — users need to see it for b
 │  Add Account           ✕    │
 ├─────────────────────────────┤
 │                              │
-│  [ 📷 Scan QR Code ]         │  ← Opens camera
-│                              │
-│  ──────── or ────────        │
-│                              │
 │  Issuer: [GitHub       ]     │
 │  Label:  [user@gh.com  ]     │
-│  Secret: [JBSWY3DPE... ]     │  ← Manual entry
+│  Secret: [JBSWY3DPE... ]     │  ← Manual entry or paste otpauth:// URI
 │                              │
 │  Algorithm: [SHA1  ▾]        │
 │  Digits:    [6  ▾]           │
@@ -434,8 +428,7 @@ tauri-build = { version = "2", features = [] }
     "preview": "vite preview"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.0.0",
-    "jsqr": "^1.4.0"
+    "@tauri-apps/api": "^2.0.0"
   },
   "devDependencies": {
     "vite": "^6.3.0"
@@ -447,44 +440,42 @@ tauri-build = { version = "2", features = [] }
 
 ## 8. Implementation Phases
 
-### Phase 1: Skeleton (current phase)
-- [ ] Initialize Tauri v2 project with Vite frontend
-- [ ] Set up directory structure (per §3.1)
-- [ ] Configure `tauri.conf.json`: `decorations: false`, `visible: false`, `devUrl`, `beforeDevCommand`
-- [ ] Configure `vite.config.js`, `package.json`, `Cargo.toml`, `capabilities/default.json`
-- [ ] Build "Hello World" window (hidden initially, shown via Rust after state restore)
-- [ ] Implement custom frameless titlebar (drag region, pin/minimize/close buttons)
-- [ ] Implement `paths.rs` (exe-stem derived `.auth` path)
-- [ ] Implement `diagnostics.rs` (crash hook → `{exe}.crash`, in-memory event log)
+### Phase 1: Skeleton ✅ Complete
+- [x] Initialize Tauri v2 project with Vite frontend
+- [x] Set up directory structure (per §3.1)
+- [x] Configure `tauri.conf.json`: `decorations: false`, `visible: false`, `devUrl`, `beforeDevCommand`
+- [x] Configure `vite.config.js`, `package.json`, `Cargo.toml`, `capabilities/default.json`
+- [x] Build "Hello World" window (hidden initially, shown via Rust after state restore)
+- [x] Implement custom frameless titlebar (drag region, pin/minimize/close buttons)
+- [x] Implement `paths.rs` (exe-stem derived `.auth` path)
+- [x] Implement `diagnostics.rs` (crash hook → `{exe}.crash`, in-memory event log)
 
-### Phase 2: TOTP Engine
-- [ ] Implement `totp-rs` integration in Rust
-- [ ] Create `generate_code` command
-- [ ] Build frontend display (code + countdown timer)
-- [ ] Support SHA-1, SHA-256, SHA-512
+### Phase 2: TOTP Engine ✅ Complete
+- [x] Implement `totp-rs` integration in Rust
+- [x] Create `generate_code` command
+- [x] Build frontend display (code + countdown timer)
+- [x] Support SHA-1, SHA-256, SHA-512
 
-### Phase 3: Account Management
-- [ ] Implement `.auth` file read/write + AES-256-GCM encrypt/decrypt
-- [ ] CRUD commands (add, edit, delete, list)
-- [ ] `otpauth://` URI parser
-- [ ] Frontend account list UI
+### Phase 3: Account Management ✅ Complete
+- [x] Implement `.auth` file read/write + AES-256-GCM encrypt/decrypt
+- [x] CRUD commands (add, edit, delete, list)
+- [x] `otpauth://` URI parser
+- [x] Frontend account list UI
 
-### Phase 4: QR Scanning
-- [ ] Camera access via WebView `getUserMedia`
-- [ ] QR code detection with `jsqr`
-- [ ] Fallback: paste QR image or enter secret manually
+### Phase 4: QR Scanning ⏭️ Skipped (Intentionally Removed)
+> QR scanning was removed for security reasons. Accounts are added via manual entry or `otpauth://` URI paste only.
 
-### Phase 5: Security
-- [ ] App lock with PIN
-- [ ] Clipboard auto-clear timer
-- [ ] Export/import encrypted backup
+### Phase 5: Security ✅ Complete
+- [x] App lock with PIN
+- [x] Clipboard auto-clear timer
+- [x] Export/import encrypted backup
 
-### Phase 6: Polish
-- [ ] System tray integration
-- [ ] Dark/light theme
-- [ ] Keyboard shortcuts
-- [ ] Search/filter accounts
-- [ ] Drag & drop reorder
+### Phase 6: Polish ✅ Complete
+- [x] System tray integration
+- [x] Dark/light theme
+- [x] Keyboard shortcuts
+- [x] Search/filter accounts
+- [x] Drag & drop reorder
 
 ---
 
@@ -495,8 +486,8 @@ tauri-build = { version = "2", features = [] }
 | **`totp-rs` over `cotp`** | More feature-rich, built-in `otpauth` URI parsing, active maintenance |
 | **Portable `.auth` file over Stronghold** | No external dependencies, data lives alongside .exe — trivially portable and backup-friendly |
 | **Vanilla JS + Vite over React/Svelte** | Small binary, fast HMR in dev, full ES module support, clean production builds |
-| **Frontend QR scanning** | Browser APIs are mature; avoids native camera dependencies |
 | **No network permission** | Core to the "offline authenticator" trust model |
+| **No QR scanning** | Intentionally removed for security — secrets never touch camera/image processing in the browser |
 | **Argon2id + AES-256-GCM** | Memory-hard key derivation (stronger than PBKDF2), standard AES-GCM encryption; PIN-derived key |
 | **Custom frameless window** | `decorations: false` with custom titlebar for a modern, clean look |
 

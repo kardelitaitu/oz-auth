@@ -81,11 +81,7 @@ mod tests {
     fn test_auth_path_parent_is_exe_dir() {
         let auth = auth_path();
         let parent = auth.parent().unwrap();
-        assert_eq!(
-            parent,
-            &exe_dir(),
-            "auth file parent must equal exe dir"
-        );
+        assert_eq!(parent, &exe_dir(), "auth file parent must equal exe dir");
     }
 
     #[test]

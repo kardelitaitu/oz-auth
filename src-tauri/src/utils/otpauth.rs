@@ -167,7 +167,8 @@ mod tests {
     fn test_parse_uri_special_chars_in_label() {
         // Label with special characters (spaces, @, dots are already common)
         // url::Url::parse does NOT auto-decode percent-encoded path segments.
-        let uri = "otpauth://totp/My%20App:user+tag@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
+        let uri =
+            "otpauth://totp/My%20App:user+tag@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
         let parsed = parse_uri(uri).unwrap();
         // Percent-encoded characters remain encoded in the path
         assert_eq!(parsed.issuer, "My%20App");
@@ -194,7 +195,8 @@ mod tests {
     fn test_parse_uri_issuer_colon_in_label() {
         // Path has colon — "Issuer:label" split. If label itself contains
         // a colon, only the first colon separates issuer from label.
-        let uri = "otpauth://totp/OnlyIssuer:label:with:colons?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
+        let uri =
+            "otpauth://totp/OnlyIssuer:label:with:colons?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
         let parsed = parse_uri(uri).unwrap();
         assert_eq!(parsed.issuer, "OnlyIssuer");
         assert_eq!(parsed.label, "label:with:colons");
@@ -213,9 +215,13 @@ mod tests {
     #[test]
     fn test_parse_uri_period_zero_or_invalid() {
         // period=0 should be parsed as 0 (not rejected by parser)
-        let uri = "otpauth://totp/ACME:john@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&period=0";
+        let uri =
+            "otpauth://totp/ACME:john@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&period=0";
         let parsed = parse_uri(uri).unwrap();
-        assert_eq!(parsed.period, 0, "period=0 is technically allowed by parser");
+        assert_eq!(
+            parsed.period, 0,
+            "period=0 is technically allowed by parser"
+        );
     }
 
     #[test]
@@ -254,14 +260,18 @@ mod tests {
         // Path issuer should be used when no query issuer is present
         let uri = "otpauth://totp/PathIssuer:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
         let parsed = parse_uri(uri).unwrap();
-        assert_eq!(parsed.issuer, "PathIssuer", "issuer from path must be used when no query issuer");
+        assert_eq!(
+            parsed.issuer, "PathIssuer",
+            "issuer from path must be used when no query issuer"
+        );
         assert_eq!(parsed.label, "user@test.com");
     }
 
     #[test]
     fn test_parse_uri_digits_0_accepted_as_valid() {
         // digits=0 is a valid u8 parse → returns 0, not default 6
-        let uri = "otpauth://totp/ACME:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&digits=0";
+        let uri =
+            "otpauth://totp/ACME:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&digits=0";
         let parsed = parse_uri(uri).unwrap();
         assert_eq!(parsed.digits, 0, "digits=0 parses as valid u8");
     }
@@ -269,7 +279,8 @@ mod tests {
     #[test]
     fn test_parse_uri_period_negative_defaults_to_30() {
         // period=-1 fails to parse from_str("-1") → .ok() → None → defaults to 30
-        let uri = "otpauth://totp/ACME:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&period=-1";
+        let uri =
+            "otpauth://totp/ACME:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&period=-1";
         let parsed = parse_uri(uri).unwrap();
         assert_eq!(parsed.period, 30, "period=-1 should default to 30");
     }
@@ -277,9 +288,13 @@ mod tests {
     #[test]
     fn test_parse_uri_percent_encoded_unicode_in_label() {
         // Unicode characters should be percent-encoded in URIs
-        let uri = "otpauth://totp/MyApp:user@xn--mszy-0ra.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
+        let uri =
+            "otpauth://totp/MyApp:user@xn--mszy-0ra.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
         let parsed = parse_uri(uri).unwrap();
-        assert_eq!(parsed.label, "user@xn--mszy-0ra.com", "unicode domain in label preserved via punycode");
+        assert_eq!(
+            parsed.label, "user@xn--mszy-0ra.com",
+            "unicode domain in label preserved via punycode"
+        );
         assert_eq!(parsed.issuer, "MyApp");
     }
 
@@ -289,8 +304,10 @@ mod tests {
         for variant in &["sha1", "Sha1", "SHA1", "shA1"] {
             let uri = format!("otpauth://totp/ACME:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&algorithm={}", variant);
             let parsed = parse_uri(&uri).unwrap();
-            assert!(matches!(parsed.algorithm, Algorithm::SHA1),
-                    "SHA1 variant '{variant}' must work case-insensitively");
+            assert!(
+                matches!(parsed.algorithm, Algorithm::SHA1),
+                "SHA1 variant '{variant}' must work case-insensitively"
+            );
         }
     }
 

@@ -521,7 +521,10 @@ mod tests {
         let mut data = fresh();
         data.accounts.encrypted = false;
         data.accounts.data_json = String::new(); // empty string, not "[]"
-        assert!(reconcile_invariants(&mut data), "empty data_json should be fixed");
+        assert!(
+            reconcile_invariants(&mut data),
+            "empty data_json should be fixed"
+        );
         assert_eq!(data.accounts.data_json, "[]", "should be normalized to []");
     }
 
@@ -530,17 +533,14 @@ mod tests {
         // Payload marked encrypted but with garbage hex values
         let payload = AccountsPayload {
             encrypted: true,
-            nonce_hex: Some("00".into()),  // 1 byte, not 12
+            nonce_hex: Some("00".into()), // 1 byte, not 12
             ciphertext_hex: Some("aabbcc".into()),
             data_json: String::new(),
         };
         let key = [0xAAu8; 32];
         // Will fail at hex decode stage — nonce_hex decodes to 1 byte
         let result = decrypt_accounts(&payload, &key);
-        assert!(
-            result.is_err(),
-            "short nonce should be detected and fail"
-        );
+        assert!(result.is_err(), "short nonce should be detected and fail");
     }
 
     #[test]
@@ -552,7 +552,10 @@ mod tests {
         assert!(payload.ciphertext_hex.is_some());
         // Decrypt back — should be empty JSON array
         let mut decrypted = decrypt_accounts(&payload, &key).unwrap();
-        assert!(decrypted.is_empty(), "encrypted empty list → empty decrypted");
+        assert!(
+            decrypted.is_empty(),
+            "encrypted empty list → empty decrypted"
+        );
         decrypted.clear();
     }
 
@@ -587,18 +590,23 @@ mod tests {
         data.accounts.encrypted = true;
         data.config.password_protected = false;
         data.config.password_salt = "should-remain".into();
-        assert!(reconcile_invariants(&mut data), "should trigger encrypted→protected fix");
+        assert!(
+            reconcile_invariants(&mut data),
+            "should trigger encrypted→protected fix"
+        );
         assert!(data.config.password_protected, "should become protected");
         // Salt is NOT cleared because password_protected is now true after step 1
-        assert_eq!(data.config.password_salt, "should-remain",
-            "salt NOT cleared because password_protected was set to true in step 1");
+        assert_eq!(
+            data.config.password_salt, "should-remain",
+            "salt NOT cleared because password_protected was set to true in step 1"
+        );
     }
 
     #[test]
     fn test_decrypt_accounts_encrypted_with_invalid_ciphertext_hex_fails() {
         let payload = AccountsPayload {
             encrypted: true,
-            nonce_hex: Some("0102030405060708090a0b0c".into()),  // 12 bytes
+            nonce_hex: Some("0102030405060708090a0b0c".into()), // 12 bytes
             ciphertext_hex: Some("not-hex!!".into()),
             data_json: String::new(),
         };
@@ -648,14 +656,74 @@ mod tests {
         assert_eq!(decrypted[0].id, "fields-test");
         assert_eq!(decrypted[0].issuer, "Multi-Field");
         assert_eq!(decrypted[0].label, "multi@test.com");
-        assert!(matches!(decrypted[0].algorithm, crate::models::account::Algorithm::SHA512));
+        assert!(matches!(
+            decrypted[0].algorithm,
+            crate::models::account::Algorithm::SHA512
+        ));
         assert_eq!(decrypted[0].digits, 8);
         assert_eq!(decrypted[0].period, 90);
-        assert_eq!(decrypted[0].secret, vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE]);
+        assert_eq!(
+            decrypted[0].secret,
+            vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE]
+        );
         assert_eq!(decrypted[0].sort_order, 42);
         for a in &mut decrypted {
             a.secret.zeroize();
         }
         decrypted.clear();
+    }
+
+    #[test]
+    fn test_try_load_reconcile_saves_to_disk() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        // Remove any existing auth file
+        let path = auth_path();
+        let _ = std::fs::remove_file(&path);
+
+        // Manually write an inconsistent .auth file:
+        // encrypted=true but password_protected=false
+        let mut data = fresh();
+        data.accounts.encrypted = true;
+        data.config.password_protected = false;
+        let json = serde_json::to_string_pretty(&data).unwrap();
+        std::fs::write(&path, &json).unwrap();
+
+        // try_load reads it → reconcile_invariants fixes it → save persists the fix
+        let loaded = try_load().unwrap();
+        assert!(
+            loaded.config.password_protected,
+            "reconcile should have set password_protected=true"
+        );
+
+        // Verify the fix was persisted to disk (not just in-memory)
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let saved: AuthData = serde_json::from_str(&raw).unwrap();
+        assert!(
+            saved.config.password_protected,
+            "fixed password_protected must be saved to disk"
+        );
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_exists_returns_false_when_no_file() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let path = auth_path();
+        let _ = std::fs::remove_file(&path);
+        assert!(!exists(), "exists() should return false when no .auth file");
+    }
+
+    #[test]
+    fn test_exists_returns_true_when_file_present() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let path = auth_path();
+        let _ = std::fs::remove_file(&path);
+        // Create a fresh auth file
+        let data = fresh();
+        let json = serde_json::to_string_pretty(&data).unwrap();
+        std::fs::write(&path, &json).unwrap();
+        assert!(exists(), "exists() should return true when .auth file exists");
+        let _ = std::fs::remove_file(&path);
     }
 }

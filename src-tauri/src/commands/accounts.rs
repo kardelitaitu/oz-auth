@@ -67,6 +67,12 @@ pub fn decode_secret(input: &str) -> Result<Vec<u8>, String> {
 
 #[cfg(test)]
 mod tests {
+
+    fn test_app_state() -> AppState {
+        AppState {
+            encryption_key: std::sync::Mutex::new(None),
+        }
+    }
     use super::*;
 
     // ── decode_secret unit tests ──────────────────────────────
@@ -165,7 +171,10 @@ mod tests {
     fn test_decode_secret_hex_with_0x_prefix() {
         // Hex with 0x prefix is NOT valid hex::decode input
         let err = decode_secret("0xdeadbeef").unwrap_err();
-        assert!(err.contains("invalid secret"), "0x prefix should fail: {err}");
+        assert!(
+            err.contains("invalid secret"),
+            "0x prefix should fail: {err}"
+        );
     }
 
     #[test]
@@ -182,7 +191,10 @@ mod tests {
         // Whitespace trimming should handle leading/trailing spaces
         // HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ = 32 chars → 20 bytes
         let result = decode_secret("  HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ  ").unwrap();
-        assert!(!result.is_empty(), "should decode with surrounding whitespace");
+        assert!(
+            !result.is_empty(),
+            "should decode with surrounding whitespace"
+        );
     }
 
     #[test]
@@ -577,6 +589,313 @@ mod tests {
         });
     }
 
+    // ── Impl function tests (cover Tauri command wrapper lines) ──
+
+    #[test]
+    fn test_add_account_impl_plaintext() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "[]".into();
+            crate::storage::save(&data).unwrap();
+
+            let account = add_account_impl(
+                "TestIssuer",
+                "test@test.com",
+                "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ",
+                None,
+                None,
+                None,
+                &state,
+            )
+            .unwrap();
+            assert_eq!(account.issuer, "TestIssuer");
+            assert_eq!(account.digits, 6);
+            assert_eq!(account.secret.len(), 20);
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_add_account_impl_with_custom_params() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "[]".into();
+            crate::storage::save(&data).unwrap();
+
+            let account = add_account_impl(
+                "Custom",
+                "custom@test.com",
+                "0123456789abcdef0123456789abcdef",
+                Some("SHA256"),
+                Some(8),
+                Some(60),
+                &state,
+            )
+            .unwrap();
+            assert!(matches!(account.algorithm, Algorithm::SHA256));
+            assert_eq!(account.digits, 8);
+            assert_eq!(account.period, 60);
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_add_account_from_uri_impl_success() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "[]".into();
+            crate::storage::save(&data).unwrap();
+
+            let uri = "otpauth://totp/ACME:john@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&issuer=ACME&algorithm=SHA1&digits=6&period=30";
+            let account = add_account_from_uri_impl(uri, &state).unwrap();
+            assert_eq!(account.issuer, "ACME");
+            assert_eq!(account.label, "john@example.com");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_add_account_from_uri_impl_empty_secret_fails() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let uri = "otpauth://totp/Test:test@test.com?secret=";
+            let err = add_account_from_uri_impl(uri, &state).unwrap_err();
+            assert!(
+                err.contains("empty") || err.contains("invalid"),
+                "error: {err}"
+            );
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_remove_account_impl_removes_by_id() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![
+                Account {
+                    id: "keep".into(),
+                    issuer: "Keep".into(),
+                    label: "k".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![1],
+                    sort_order: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+                Account {
+                    id: "remove-me".into(),
+                    issuer: "Remove".into(),
+                    label: "r".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![2],
+                    sort_order: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+            ];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            remove_account_impl("remove-me", &state).unwrap();
+
+            let loaded = crate::storage::try_load().unwrap();
+            let mut remaining = crate::storage::load_accounts(&loaded, None).unwrap();
+            assert_eq!(remaining.len(), 1);
+            assert_eq!(remaining[0].id, "keep");
+            for a in &mut remaining {
+                a.secret.zeroize();
+            }
+            remaining.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_update_account_impl_updates_fields() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "upd".into(),
+                issuer: "Old".into(),
+                label: "old@test.com".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let updated = update_account_impl(
+                "upd",
+                Some("NewIssuer"),
+                Some("new@test.com"),
+                Some(42),
+                &state,
+            )
+            .unwrap();
+            assert_eq!(updated.issuer, "NewIssuer");
+            assert_eq!(updated.label, "new@test.com");
+            assert_eq!(updated.sort_order, 42);
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_update_account_impl_nonexistent_id_fails() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "real".into(),
+                issuer: "Real".into(),
+                label: "r".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+            let err = update_account_impl("nonexistent", None, None, None, &state).unwrap_err();
+            assert!(err.contains("not found"), "error: {err}");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_list_accounts_impl_with_search() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![
+                Account {
+                    id: "g1".into(),
+                    issuer: "GitHub".into(),
+                    label: "dev@github.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![1],
+                    sort_order: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+                Account {
+                    id: "g2".into(),
+                    issuer: "Google".into(),
+                    label: "user@gmail.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![2],
+                    sort_order: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+            ];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let results = list_accounts_impl(Some("github"), &state).unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].issuer, "GitHub");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_list_accounts_impl_no_search_returns_all() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![
+                Account {
+                    id: "a1".into(),
+                    issuer: "Alpha".into(),
+                    label: "a@test.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![1],
+                    sort_order: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+                Account {
+                    id: "a2".into(),
+                    issuer: "Beta".into(),
+                    label: "b@test.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![2],
+                    sort_order: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+            ];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let results = list_accounts_impl(None, &state).unwrap();
+            assert_eq!(results.len(), 2);
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_list_accounts_impl_search_no_match() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "a1".into(),
+                issuer: "Alpha".into(),
+                label: "a@test.com".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let results = list_accounts_impl(Some("xyzzy"), &state).unwrap();
+            assert!(results.is_empty(), "no-match search must return empty");
+            cleanup_auth_file();
+        });
+    }
+
     // ── update_account sort_order ────────────────────────────
 
     #[test]
@@ -636,8 +955,10 @@ mod tests {
     fn test_decode_secret_only_whitespace_fails() {
         // All whitespace → trimmed to empty → decode fails
         let err = decode_secret("   \t\n  ").unwrap_err();
-        assert!(err.contains("invalid secret") || err.contains("empty"),
-                "only whitespace should fail: {err}");
+        assert!(
+            err.contains("invalid secret") || err.contains("empty"),
+            "only whitespace should fail: {err}"
+        );
     }
 
     #[test]
@@ -652,7 +973,10 @@ mod tests {
         // "F" is valid base32 (F=15) → decodes to 5 bits = insufficient for 1 byte
         // base32::decode returns Some(vec![]) → validate_secret_length rejects empty
         let err = decode_secret("F").unwrap_err();
-        assert!(err.contains("cannot be empty"), "single base32 char should result in empty secret error: {err}");
+        assert!(
+            err.contains("cannot be empty"),
+            "single base32 char should result in empty secret error: {err}"
+        );
     }
 
     #[test]
@@ -666,8 +990,10 @@ mod tests {
     fn test_decode_secret_only_padding_chars() {
         // base32 padding chars without data
         let err = decode_secret("====").unwrap_err();
-        assert!(err.contains("invalid secret") || err.contains("empty"),
-                "only padding chars should fail: {err}");
+        assert!(
+            err.contains("invalid secret") || err.contains("empty"),
+            "only padding chars should fail: {err}"
+        );
     }
 
     // ── New CRUD edge case tests via storage layer ───────────
@@ -790,7 +1116,10 @@ mod tests {
             // Find and update multiple fields
             let mut loaded = crate::storage::try_load().unwrap();
             let mut all_accounts = crate::storage::load_accounts(&loaded, None).unwrap();
-            let account = all_accounts.iter_mut().find(|a| a.id == "updatable").unwrap();
+            let account = all_accounts
+                .iter_mut()
+                .find(|a| a.id == "updatable")
+                .unwrap();
             account.issuer = "NewIssuer".into();
             account.label = "new@test.com".into();
             account.sort_order = 99;
@@ -850,8 +1179,11 @@ mod tests {
 
             // search for "xyzzy" → no match
             let q = "xyzzy";
-            let filtered: Vec<_> = all_accounts.iter()
-                .filter(|a| a.issuer.to_lowercase().contains(q) || a.label.to_lowercase().contains(q))
+            let filtered: Vec<_> = all_accounts
+                .iter()
+                .filter(|a| {
+                    a.issuer.to_lowercase().contains(q) || a.label.to_lowercase().contains(q)
+                })
                 .collect();
             assert!(filtered.is_empty(), "no-match search must return empty");
 
@@ -864,15 +1196,14 @@ mod tests {
     }
 }
 
-#[tauri::command]
-pub fn add_account(
-    issuer: String,
-    label: String,
-    secret: String,
-    algorithm: Option<String>,
+fn add_account_impl(
+    issuer: &str,
+    label: &str,
+    secret: &str,
+    algorithm: Option<&str>,
     digits: Option<u8>,
     period: Option<u32>,
-    state: State<'_, AppState>,
+    state: &AppState,
 ) -> Result<Account, String> {
     let mut data = try_load()?;
     let key_wrapper = state.get_key()?;
@@ -880,7 +1211,7 @@ pub fn add_account(
     let mut accounts = load_accounts(&data, key)?;
     // key_wrapper dropped here → auto-zeroized
 
-    let algo = match algorithm.as_deref() {
+    let algo = match algorithm {
         Some("SHA256") => Algorithm::SHA256,
         Some("SHA512") => Algorithm::SHA512,
         _ => Algorithm::SHA1,
@@ -889,12 +1220,12 @@ pub fn add_account(
     let now = Utc::now();
     let account = Account {
         id: Uuid::new_v4().to_string(),
-        issuer,
-        label,
+        issuer: issuer.to_string(),
+        label: label.to_string(),
         algorithm: algo,
         digits: digits.unwrap_or(6),
         period: period.unwrap_or(30),
-        secret: decode_secret(&secret)?,
+        secret: decode_secret(secret)?,
         sort_order: accounts.len() as u32,
         created_at: now,
         updated_at: now,
@@ -914,11 +1245,28 @@ pub fn add_account(
 }
 
 #[tauri::command]
-pub fn add_account_from_uri(
-    otpauth_uri: String,
+pub fn add_account(
+    issuer: String,
+    label: String,
+    secret: String,
+    algorithm: Option<String>,
+    digits: Option<u8>,
+    period: Option<u32>,
     state: State<'_, AppState>,
 ) -> Result<Account, String> {
-    let parsed = crate::utils::otpauth::parse_uri(&otpauth_uri)?;
+    add_account_impl(
+        &issuer,
+        &label,
+        &secret,
+        algorithm.as_deref(),
+        digits,
+        period,
+        &state,
+    )
+}
+
+fn add_account_from_uri_impl(otpauth_uri: &str, state: &AppState) -> Result<Account, String> {
+    let parsed = crate::utils::otpauth::parse_uri(otpauth_uri)?;
 
     // Validate secret length early — before any disk I/O
     validate_secret_length(&parsed.secret)?;
@@ -956,7 +1304,14 @@ pub fn add_account_from_uri(
 }
 
 #[tauri::command]
-pub fn remove_account(account_id: String, state: State<'_, AppState>) -> Result<(), String> {
+pub fn add_account_from_uri(
+    otpauth_uri: String,
+    state: State<'_, AppState>,
+) -> Result<Account, String> {
+    add_account_from_uri_impl(&otpauth_uri, &state)
+}
+
+fn remove_account_impl(account_id: &str, state: &AppState) -> Result<(), String> {
     let mut data = try_load()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
@@ -979,12 +1334,16 @@ pub fn remove_account(account_id: String, state: State<'_, AppState>) -> Result<
 }
 
 #[tauri::command]
-pub fn update_account(
-    account_id: String,
-    issuer: Option<String>,
-    label: Option<String>,
+pub fn remove_account(account_id: String, state: State<'_, AppState>) -> Result<(), String> {
+    remove_account_impl(&account_id, &state)
+}
+
+fn update_account_impl(
+    account_id: &str,
+    issuer: Option<&str>,
+    label: Option<&str>,
     sort_order: Option<u32>,
-    state: State<'_, AppState>,
+    state: &AppState,
 ) -> Result<Account, String> {
     let mut data = try_load()?;
     let key_wrapper = state.get_key()?;
@@ -998,10 +1357,10 @@ pub fn update_account(
         .ok_or_else(|| format!("account not found: {account_id}"))?;
 
     if let Some(v) = issuer {
-        account.issuer = v;
+        account.issuer = v.to_string();
     }
     if let Some(v) = label {
-        account.label = v;
+        account.label = v.to_string();
     }
     if let Some(v) = sort_order {
         account.sort_order = v;
@@ -1019,9 +1378,25 @@ pub fn update_account(
 }
 
 #[tauri::command]
-pub fn list_accounts(
-    search_query: Option<String>,
+pub fn update_account(
+    account_id: String,
+    issuer: Option<String>,
+    label: Option<String>,
+    sort_order: Option<u32>,
     state: State<'_, AppState>,
+) -> Result<Account, String> {
+    update_account_impl(
+        &account_id,
+        issuer.as_deref(),
+        label.as_deref(),
+        sort_order,
+        &state,
+    )
+}
+
+fn list_accounts_impl(
+    search_query: Option<&str>,
+    state: &AppState,
 ) -> Result<Vec<AccountSummary>, String> {
     let data = try_load()?;
     let key_wrapper = state.get_key()?;
@@ -1044,4 +1419,12 @@ pub fn list_accounts(
     zeroize_accounts(&mut accounts);
 
     Ok(summaries)
+}
+
+#[tauri::command]
+pub fn list_accounts(
+    search_query: Option<String>,
+    state: State<'_, AppState>,
+) -> Result<Vec<AccountSummary>, String> {
+    list_accounts_impl(search_query.as_deref(), &state)
 }

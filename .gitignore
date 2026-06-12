@@ -44,6 +44,7 @@ sticky-notes-rust-example/
 
 # Coverage
 coverage/
+src-tauri/tarpaulin-report/
 src-tauri/metadata.json
 nul
 src-tauri/nul

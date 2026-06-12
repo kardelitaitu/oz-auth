@@ -20,7 +20,6 @@
 | **TOTP engine** | `totp-rs` v5 (RFC 6238) |
 | **Secure storage** | Portable `.auth` JSON file + AES-256-GCM (key from **Argon2id**) |
 | **System tray** | `tauri` built-in (`tray-icon` feature) |
-| **QR scanning** | Browser `getUserMedia` + `jsqr` (npm) |
 | **Package manager** | `cargo` for Rust, `npm` for frontend |
 
 ---
@@ -33,22 +32,20 @@ tauri-authenticator/
 ├── AGENTS.md                   # This file
 ├── README.md                   # User-facing docs
 ├── index.html                  # Vite entry point
-├── package.json                # Frontend deps (Vite, @tauri-apps/api, jsqr)
+├── package.json                # Frontend deps (Vite, @tauri-apps/api)
 ├── vite.config.js              # Vite configuration
 ├── src/                        # Frontend (WebView)
 │   ├── main.js                 # Entry point, Tauri event listeners, window tracking
 │   ├── styles/
 │   │   ├── main.css            # Global styles + custom titlebar
 │   │   └── themes.css          # Light/dark theme CSS variables
-│   ├── js/
-│   │   ├── totp.js             # Code display, countdown timers
-│   │   ├── accounts.js         # Account CRUD UI logic
-│   │   ├── qr-scanner.js       # Camera QR scanning
-│   │   ├── clipboard.js        # Copy-to-clipboard helpers
-│   │   └── lock.js             # Lock screen logic
-│   └── assets/
-│       ├── icons/
-│       └── sounds/
+│   └── js/
+│       ├── totp.js             # Code display, countdown timers
+│       ├── accounts.js         # Account CRUD UI logic
+│       ├── clipboard.js        # Copy-to-clipboard with auto-clear
+│       ├── dragdrop.js         # Drag-and-drop account reordering
+│       ├── lock.js             # Lock screen, PIN entry, unlock
+│       └── settings.js         # Settings dialog (PIN, backup, clipboard timeout)
 ├── src-tauri/                  # Tauri backend (Rust)
 │   ├── Cargo.toml
 │   ├── tauri.conf.json
@@ -213,9 +210,6 @@ cargo fmt --check && cargo clippy -- -D warnings && cargo test
 ## Dependencies to Add (when needed)
 
 ```toml
-# Error handling
-thiserror = "2"
-
 # More Tauri plugins as needed
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"

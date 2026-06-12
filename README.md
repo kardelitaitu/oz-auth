@@ -6,7 +6,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/rust-1.80+-orange.svg" alt="Rust 1.80+">
   <img src="https://img.shields.io/badge/tauri-v2-blue.svg" alt="Tauri v2">
-  <img src="https://img.shields.io/badge/tests-116%20passing-green.svg" alt="116 tests passing">
+  <img src="https://img.shields.io/badge/tests-249%20passing-green.svg" alt="249 tests passing">
   <img src="https://img.shields.io/badge/clippy-clean-brightgreen.svg" alt="Clippy clean">
 </p>
 
@@ -14,7 +14,7 @@
 
 ## Features
 
-- **💾 Small & Portable** — Single 9 MB executable, no installer, no dependencies. Run from USB.
+- **💾 Small & Portable** — Single ~10 MB executable, no installer, no dependencies. Run from USB.
 - **📐 Remembers Window Size & Position** — Picks up exactly where you left off.
 - **📌 Toggle Always on Top** — Keep the window pinned above all others.
 - **🔐 PIN Protection** — Lock/unlock with a PIN, auto-lock after inactivity (configurable timeout).
@@ -237,7 +237,7 @@ tauri-authenticator/
 ```bash
 # Rust checks
 cargo check                    # Type-check only
-cargo test                     # Run tests (116 tests)
+cargo test                     # Run tests (249 tests)
 cargo clippy -- -D warnings    # Lint with strict mode
 cargo fmt --check              # Verify formatting
 
@@ -251,6 +251,12 @@ npm run tauri                  # Build frontend then package .exe
 # or manually:
 npm run build && cargo tauri build
 ```
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md) for a detailed history of changes.
 
 ---
 
