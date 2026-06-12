@@ -6,6 +6,7 @@ use zeroize::Zeroize;
 
 fn make_totp(account: &Account) -> Result<totp_rs::TOTP, String> {
     use crate::models::account::Algorithm;
+    crate::commands::accounts::validate_secret_length(&account.secret)?;
     let algo = match account.algorithm {
         Algorithm::SHA1 => totp_rs::Algorithm::SHA1,
         Algorithm::SHA256 => totp_rs::Algorithm::SHA256,
@@ -576,7 +577,7 @@ mod tests {
         with_fs_lock(|| {
             cleanup_auth_file();
             let state = test_app_state();
-            // Account with an empty secret — totp_rs rejects empty key material
+            // Account with an empty secret — now caught by validate_secret_length in make_totp
             let mut account = test_account(b"12345678901234567890", Algorithm::SHA1, 6);
             account.secret = vec![];
             seed_plaintext_accounts(&[account]);
@@ -584,7 +585,7 @@ mod tests {
             let result = generate_code_impl("test-1", &state);
             assert!(result.is_err(), "empty secret must produce an error");
             let err = result.unwrap_err();
-            assert!(err.contains("totp error"), "error should come from make_totp: {err}");
+            assert!(err.contains("too short"), "error should mention too short: {err}");
             cleanup_auth_file();
         });
     }
@@ -622,12 +623,10 @@ mod tests {
             seed_plaintext_accounts(&[a1, a2]);
 
             let result = generate_all_codes_impl(&state);
-            // The batch fails entirely because make_totp errors on the corrupted account.
-            // Note: if the good account is processed first, its code IS generated and
-            // pushed to results, but then the bad account fails and the entire function
-            // returns Err — the good code was computed but discarded.
+            // The batch fails entirely because make_totp (via validate_secret_length) errors.
             assert!(result.is_err(), "corrupted account causes entire batch to fail");
-            assert!(result.unwrap_err().contains("totp"));
+            let err = result.unwrap_err();
+            assert!(err.contains("too short"), "error should mention too short: {err}");
             cleanup_auth_file();
         });
     }
