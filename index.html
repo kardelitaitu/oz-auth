@@ -156,6 +156,20 @@
         <div class="ctx-item ctx-delete" data-action="delete">✕ Delete</div>
       </div>
 
+      <!-- Backup confirmation overlay -->
+      <div id="backup-confirm-overlay" class="hidden">
+        <div id="backup-confirm-card">
+          <h2 id="backup-confirm-title">Export all keys?</h2>
+          <p id="backup-confirm-msg">This will save ALL secret keys in plain text next to the app. Keep the file secure.</p>
+          <input type="password" id="backup-pin-input" placeholder="Enter PIN to confirm" spellcheck="false" autocomplete="off" />
+          <div id="backup-confirm-error" class="hidden"></div>
+          <div class="dialog-actions">
+            <button id="backup-confirm-cancel">Cancel</button>
+            <button id="backup-confirm-submit">Confirm</button>
+          </div>
+        </div>
+      </div>
+
       <!-- Delete confirmation overlay -->
       <div id="delete-confirm-overlay" class="hidden">
         <div id="delete-confirm-card">

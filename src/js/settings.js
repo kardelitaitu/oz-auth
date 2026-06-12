@@ -22,6 +22,11 @@ export function openSettings(config) {
     settingsTitle,
     settingsBody,
     settingsCloseBtn,
+    backupConfirmOverlay,
+    backupPinInput,
+    backupConfirmSubmit,
+    backupConfirmCancel,
+    backupConfirmError,
   } = config;
 
   settingsOverlay.classList.remove("hidden");
@@ -149,38 +154,57 @@ export function openSettings(config) {
     });
 
     // ── Backup all keys ──────────────────────────────
-    document.getElementById("backup-keys-btn").addEventListener("click", async () => {
-      if (!confirm("⚠ WARNING: This will export ALL your secret keys in plain text.\n\nKeep this file secure. Never share it or upload it online.\n\nContinue?")) {
-        return;
+    document.getElementById("backup-keys-btn").addEventListener("click", () => {
+      backupPinInput.value = "";
+      backupConfirmError.classList.add("hidden");
+      // Show/hide PIN input based on whether PIN is set
+      backupPinInput.style.display = hasPin ? "" : "none";
+      backupConfirmOverlay.classList.remove("hidden");
+      if (hasPin) {
+        backupPinInput.focus();
+      } else {
+        backupConfirmSubmit.focus();
       }
-      try {
-        const uris = await invoke("get_backup_uris");
-        if (!uris || uris.length === 0) {
-          toast("No accounts to backup", true);
+    });
+
+    backupConfirmCancel.addEventListener("click", () => {
+      backupConfirmOverlay.classList.add("hidden");
+      backupPinInput.value = "";
+    });
+
+    backupConfirmSubmit.addEventListener("click", async () => {
+      if (hasPin) {
+        const pin = backupPinInput.value;
+        if (!pin) {
+          backupConfirmError.textContent = "PIN required";
+          backupConfirmError.classList.remove("hidden");
           return;
         }
-        const timestamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-        const lines = [
-          `# oz-auth backup — ${timestamp}`,
-          `# ${uris.length} account(s)`,
-          `# WARNING: Contains plain-text secrets. Keep this file secure.`,
-          "",
-          ...uris,
-          "",
-        ];
-        const blob = new Blob([lines.join("\n")], { type: "text/plain" });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement("a");
-        a.href = url;
-        a.download = `oz-auth-backup-${timestamp}.txt`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        URL.revokeObjectURL(url);
-        toast(`Backup saved — ${uris.length} account(s)`);
+        // Verify PIN before exporting
+        try {
+          await invoke("unlock", { pin });
+        } catch (e) {
+          backupConfirmError.textContent = "Wrong PIN";
+          backupConfirmError.classList.remove("hidden");
+          return;
+        }
+      }
+      try {
+        const path = await invoke("save_backup_file");
+        toast(`Backup saved — ${path}`);
+        backupConfirmOverlay.classList.add("hidden");
+        backupPinInput.value = "";
         settingsOverlay.classList.add("hidden");
       } catch (e) {
-        toast(typeof e === "string" ? e : "Backup failed", true);
+        backupConfirmError.textContent = typeof e === "string" ? e : "Failed";
+        backupConfirmError.classList.remove("hidden");
+      }
+    });
+
+    backupPinInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        backupConfirmSubmit.click();
       }
     });
 

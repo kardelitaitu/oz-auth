@@ -1508,7 +1508,50 @@ fn get_backup_uris_impl(state: &AppState) -> Result<Vec<String>, String> {
     Ok(uris)
 }
 
+fn save_backup_file_impl(state: &AppState) -> Result<String, String> {
+    let uris = get_backup_uris_impl(state)?;
+    if uris.is_empty() {
+        return Err("no accounts to backup".to_string());
+    }
+
+    let exe_stem = crate::paths::exe_stem();
+    let exe_dir = crate::paths::exe_dir();
+
+    // Build the file content
+    let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S");
+    let mut content = String::new();
+    content.push_str(&format!("# {} backup — {}\n", exe_stem, timestamp));
+    content.push_str(&format!("# {} account(s)\n", uris.len()));
+    content.push_str("# WARNING: Contains plain-text secrets. Keep this file secure.\n");
+    content.push('\n');
+    for uri in &uris {
+        content.push_str(uri);
+        content.push('\n');
+    }
+    content.push('\n');
+
+    // Find an available filename: oz-auth.backup.txt, oz-auth.backup (1).txt, etc.
+    let base = format!("{}.backup.txt", exe_stem);
+    let mut path = exe_dir.join(&base);
+    if path.exists() {
+        let mut n = 1u32;
+        loop {
+            let name = format!("{}.backup ({}).txt", exe_stem, n);
+            path = exe_dir.join(&name);
+            if !path.exists() {
+                break;
+            }
+            n += 1;
+        }
+    }
+
+    std::fs::write(&path, &content)
+        .map_err(|e| format!("failed to write backup: {e}"))?;
+
+    Ok(path.to_string_lossy().to_string())
+}
+
 #[tauri::command]
-pub fn get_backup_uris(state: State<'_, AppState>) -> Result<Vec<String>, String> {
-    get_backup_uris_impl(&state)
+pub fn save_backup_file(state: State<'_, AppState>) -> Result<String, String> {
+    save_backup_file_impl(&state)
 }

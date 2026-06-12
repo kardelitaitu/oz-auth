@@ -194,7 +194,7 @@ pub fn run() {
             commands::accounts::update_account,
             commands::accounts::list_accounts,
             commands::accounts::get_otpauth_uri,
-            commands::accounts::get_backup_uris,
+            commands::accounts::save_backup_file,
             commands::auth::set_lock,
             commands::auth::unlock,
             commands::auth::lock,

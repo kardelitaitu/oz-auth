@@ -47,6 +47,11 @@ const qrPopup = document.getElementById("qr-popup");
 const qrCanvas = document.getElementById("qr-canvas");
 const qrTitle = document.getElementById("qr-title");
 const qrCloseBtn = document.getElementById("qr-close-btn");
+const backupConfirmOverlay = document.getElementById("backup-confirm-overlay");
+const backupPinInput = document.getElementById("backup-pin-input");
+const backupConfirmSubmit = document.getElementById("backup-confirm-submit");
+const backupConfirmCancel = document.getElementById("backup-confirm-cancel");
+const backupConfirmError = document.getElementById("backup-confirm-error");
 
 // ── Shared state ───────────────────────────────────────────
 const accounts = [];
@@ -355,6 +360,11 @@ btnSettings.addEventListener("click", () => {
     settingsTitle,
     settingsBody,
     settingsCloseBtn,
+    backupConfirmOverlay,
+    backupPinInput,
+    backupConfirmSubmit,
+    backupConfirmCancel,
+    backupConfirmError,
   });
 });
 
@@ -426,6 +436,7 @@ document.addEventListener("keydown", async (e) => {
     settingsOverlay.classList.add("hidden");
     deleteConfirmOverlay.classList.add("hidden");
     qrPopup.classList.add("hidden");
+    backupConfirmOverlay.classList.add("hidden");
     pendingDeleteId = null;
     hideContextMenu();
     searchInput.blur();
