@@ -45,17 +45,28 @@ pub(crate) fn validate_secret_length(secret: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
-/// Decode a secret that may be base32-encoded (manual entry) or raw bytes.
+/// Decode a secret that may be base32-encoded (standard TOTP) or hexadecimal.
+/// Tries base32 first — the standard, and also the preferred interpretation when a
+/// string is valid in both formats (e.g. only A-F + 2-7 characters).
+/// Falls back to hex if base32 fails.
 /// Requires at least 128 bits (16 bytes) — totp_rs rejects shorter HMAC keys.
 fn decode_secret(input: &str) -> Result<Vec<u8>, String> {
     let trimmed: String = input.chars().filter(|c| !c.is_whitespace()).collect();
-    let secret = base32::decode(
-        Alphabet::Rfc4648 { padding: false },
-        &trimmed.to_uppercase(),
-    )
-    .ok_or_else(|| "invalid base32 secret".to_string())?;
-    validate_secret_length(&secret)?;
-    Ok(secret)
+    let upper = trimmed.to_uppercase();
+
+    // Try base32 first — the standard encoding for TOTP secrets
+    if let Some(secret) = base32::decode(Alphabet::Rfc4648 { padding: false }, &upper) {
+        validate_secret_length(&secret)?;
+        return Ok(secret);
+    }
+
+    // Try hexadecimal as a fallback
+    if let Ok(secret) = hex::decode(&trimmed) {
+        validate_secret_length(&secret)?;
+        return Ok(secret);
+    }
+
+    Err("invalid secret: not valid base32 or hex".to_string())
 }
 
 #[cfg(test)]
@@ -87,7 +98,29 @@ mod tests {
 
     #[test]
     fn test_decode_secret_invalid_chars() {
-        assert!(decode_secret("!!!!invalid!!!!").is_err());
+        let err = decode_secret("!!!!invalid!!!!").unwrap_err();
+        assert!(err.contains("invalid secret"), "error should mention invalid: {err}");
+    }
+
+    #[test]
+    fn test_decode_secret_valid_hex() {
+        // 32 hex chars = 16 bytes (128 bits) — minimum valid length
+        let result = decode_secret("0123456789abcdef0123456789abcdef").unwrap();
+        assert_eq!(result.len(), 16);
+    }
+
+    #[test]
+    fn test_decode_secret_hex_uppercase() {
+        // Same as above but uppercase
+        let result = decode_secret("0123456789ABCDEF0123456789ABCDEF").unwrap();
+        assert_eq!(result.len(), 16);
+    }
+
+    #[test]
+    fn test_decode_secret_hex_too_short() {
+        // 20 hex chars = 10 bytes (80 bits) — rejected
+        let err = decode_secret("fb22358758f92429257e").unwrap_err();
+        assert!(err.contains("too short"), "hex short secret must be rejected: {err}");
     }
 
     #[test]
