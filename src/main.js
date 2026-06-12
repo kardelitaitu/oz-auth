@@ -273,7 +273,7 @@ searchInput.addEventListener("input", () => {
 // ── Theme toggle ───────────────────────────────────────────
 function applyTheme(theme) {
   document.body.className = theme === "light" ? "theme-light" : "theme-dark";
-  btnTheme.textContent = theme === "light" ? "☀️" : "🌙";
+  // SVG icon is in the HTML — no need to set textContent
 }
 
 function detectSystemTheme() {

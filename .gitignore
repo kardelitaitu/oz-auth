@@ -12,18 +12,23 @@ target
 *.pdb
 **/mutants.out*/
 
+# Auto-generated Tauri scaffolding
+src-tauri/gen/
+
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# RustRover / JetBrains
-#.idea/
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
 
 # App data files (user data, no .auth files in repo)
 *.auth
@@ -37,14 +42,5 @@ sticky-notes-rust-example/
 .env
 .env.local
 
-# Logs
-*.log
-
-# Auto-generated Tauri scaffolding
-src-tauri/gen/
-
 # Coverage
 coverage/
-
-# Backup files
-*~
