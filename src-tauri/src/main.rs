@@ -5,7 +5,37 @@ fn main() {
     // Must happen before any library loading.
     #[cfg(windows)]
     apply_process_mitigations();
+
+    // Prevent core dumps that could leak secret key material.
+    #[cfg(target_os = "linux")]
+    prevent_core_dumps_unix();
+    #[cfg(windows)]
+    prevent_core_dumps_windows();
+
     oz_auth_lib::run()
+}
+
+/// Prevent core dumps on Linux by disabling crash dump generation.
+/// Uses PR_SET_DUMPABLE to prevent the kernel from writing core dumps.
+/// Note: On macOS, prctl constants differ — this is Linux-specific.
+#[cfg(target_os = "linux")]
+fn prevent_core_dumps_unix() {
+    unsafe {
+        libc::prctl(libc::PR_SET_DUMPABLE, 0);
+    }
+}
+
+/// Suppress Windows Error Reporting (WER) crash dialogs and mini-dumps.
+#[cfg(windows)]
+fn prevent_core_dumps_windows() {
+    unsafe {
+        extern "system" {
+            fn SetErrorMode(uMode: u32) -> u32;
+        }
+        // SEM_NOGPFAULTERRORBOX (0x0002) — no crash dialog
+        // SEM_FAILCRITICALERRORS (0x0001) — no critical-error dialog
+        SetErrorMode(0x0001 | 0x0002);
+    }
 }
 
 /// Apply Windows process mitigation policies to harden against

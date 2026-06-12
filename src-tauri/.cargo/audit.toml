@@ -1,0 +1,3 @@
+[advisories]
+# RUSTSEC-2024-0429: glib unsoundness — transitive dep of Tauri on Linux
+ignore = ["RUSTSEC-2024-0429"]

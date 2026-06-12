@@ -1,0 +1,62 @@
+# cargo-deny configuration for oz-auth
+# See https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+# No additional targets needed
+
+[output]
+feature-depth = 1
+
+[advisories]
+# Ignore advisories for unmaintained crates that are transitive deps of Tauri
+# (GTK/Wayland - Linux only, not a security concern for this app)
+# unic-* crates are transitive deps of totp-rs parsing
+# proc-macro-error is a transitive build dep
+ignore = [
+    "RUSTSEC-2024-0413",  # atk (Tauri Linux dep)
+    "RUSTSEC-2024-0416",  # atk-sys
+    "RUSTSEC-2024-0412",  # gdk
+    "RUSTSEC-2024-0418",  # gdk-sys
+    "RUSTSEC-2024-0411",  # gdkwayland-sys
+    "RUSTSEC-2024-0417",  # gdkx11
+    "RUSTSEC-2024-0414",  # gdkx11-sys
+    "RUSTSEC-2024-0415",  # gtk
+    "RUSTSEC-2024-0420",  # gtk-sys
+    "RUSTSEC-2024-0419",  # gtk3-macros
+    "RUSTSEC-2024-0370",  # proc-macro-error (build dep)
+    "RUSTSEC-2025-0081",  # unic-char-property (totp-rs dep)
+    "RUSTSEC-2025-0075",  # unic-char-range
+    "RUSTSEC-2025-0080",  # unic-common
+    "RUSTSEC-2025-0100",  # unic-ucd-ident
+    "RUSTSEC-2025-0098",  # unic-ucd-version
+    "RUSTSEC-2024-0429",  # glib (unsound, Tauri Linux dep)
+]
+
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "BSD-2-Clause",
+    "BSD-3-Clause",
+    "CC0-1.0",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "Unlicense",
+    "BSL-1.0",
+    "MPL-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+]
+confidence-threshold = 0.8
+private = { ignore = true }
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+# Highlight crates with multiple versions in the tree
+highlight = "all"
+
+[sources]
+unknown-registry = "warn"
+unknown-git = "warn"
+allow-git = []

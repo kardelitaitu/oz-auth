@@ -2,6 +2,7 @@
 name = "oz-auth"
 version = "0.1.0"
 authors = ["kardelitaitu"]
+license = "MIT OR Apache-2.0"
 edition = "2021"
 
 [lib]
@@ -27,3 +28,4 @@ argon2 = "0.5"
 hex = "0.4"
 rand = "0.8"
 zeroize = { version = "1.8.2", features = ["derive"] }
+libc = "0.2"
