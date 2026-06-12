@@ -6,13 +6,25 @@ use zeroize::Zeroize;
 
 fn make_totp(account: &Account) -> Result<totp_rs::TOTP, String> {
     use crate::models::account::Algorithm;
+
+    // Reject empty secrets
     crate::commands::accounts::validate_secret_length(&account.secret)?;
+
+    // Validate digit count — new_unchecked skips this check
+    if account.digits != 6 && account.digits != 8 {
+        return Err(format!(
+            "invalid digit count: {}, must be 6 or 8",
+            account.digits
+        ));
+    }
+
     let algo = match account.algorithm {
         Algorithm::SHA1 => totp_rs::Algorithm::SHA1,
         Algorithm::SHA256 => totp_rs::Algorithm::SHA256,
         Algorithm::SHA512 => totp_rs::Algorithm::SHA512,
     };
-    totp_rs::TOTP::new(
+
+    Ok(totp_rs::TOTP::new_unchecked(
         algo,
         account.digits as usize,
         1,
@@ -20,8 +32,7 @@ fn make_totp(account: &Account) -> Result<totp_rs::TOTP, String> {
         account.secret.clone(),
         Some(account.issuer.clone()),
         account.label.clone(),
-    )
-    .map_err(|e| format!("totp error: {e}"))
+    ))
 }
 
 fn current_timestamp() -> u64 {
@@ -606,13 +617,27 @@ mod tests {
             account.secret = vec![];
             seed_plaintext_accounts(&[account]);
 
-            let result = generate_code_impl("test-1", &state);
-            assert!(result.is_err(), "empty secret must produce an error");
+            let result = generate_code_impl("test-1", &state);            assert!(result.is_err(), "empty secret must produce an error");
             let err = result.unwrap_err();
-            assert!(
-                err.contains("too short"),
-                "error should mention too short: {err}"
-            );
+            assert!(err.contains("cannot be empty"), "error should mention not empty: {err}");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_generate_code_short_secret_succeeds() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // 10-byte secret (80 bits) — now accepted via new_unchecked
+            let mut account = test_account(b"1234567890", Algorithm::SHA1, 6);
+            account.secret = b"JBSWY3DPEB".to_vec(); // 10 bytes
+            seed_plaintext_accounts(&[account]);
+
+            let (code, remaining) = generate_code_impl("test-1", &state).unwrap();
+            assert_eq!(code.len(), 6);
+            assert!(code.chars().all(|c| c.is_ascii_digit()));
+            assert!(remaining > 0 && remaining <= 30);
             cleanup_auth_file();
         });
     }
@@ -650,16 +675,9 @@ mod tests {
             seed_plaintext_accounts(&[a1, a2]);
 
             let result = generate_all_codes_impl(&state);
-            // The batch fails entirely because make_totp (via validate_secret_length) errors.
-            assert!(
-                result.is_err(),
-                "corrupted account causes entire batch to fail"
-            );
+            // The batch fails entirely because make_totp (via validate_secret_length) errors.            assert!(result.is_err(), "corrupted account causes entire batch to fail");
             let err = result.unwrap_err();
-            assert!(
-                err.contains("too short"),
-                "error should mention too short: {err}"
-            );
+            assert!(err.contains("cannot be empty"), "error should mention empty: {err}");
             cleanup_auth_file();
         });
     }
