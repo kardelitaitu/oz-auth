@@ -1,5 +1,4 @@
 import { invoke } from "@tauri-apps/api/core";
-import { startCamera, stopCamera, scanImage } from "./js/qr-scanner.js";
 import { refreshCodes, updateBars, startCountdown, stopCountdown } from "./js/totp.js";
 import { renderAccounts, setupAccountDialog } from "./js/accounts.js";
 import { createClipboardManager } from "./js/clipboard.js";
@@ -32,9 +31,7 @@ const dialogDigits = document.getElementById("dialog-digits");
 const dialogPeriod = document.getElementById("dialog-period");
 const dialogSubmit = document.getElementById("dialog-submit");
 const dialogCancel = document.getElementById("dialog-cancel");
-const dialogScan = document.getElementById("dialog-scan");
-const qrOverlay = document.getElementById("qr-overlay");
-const qrCancel = document.getElementById("qr-cancel");
+
 const settingsOverlay = document.getElementById("settings-overlay");
 const settingsTitle = document.getElementById("settings-title");
 const settingsBody = document.getElementById("settings-body");
@@ -144,7 +141,6 @@ const accountDialog = setupAccountDialog({
   dialogPeriod,
   dialogSubmit,
   dialogCancel,
-  dialogScan,
   btnAdd,
   toast,
   getAccounts: () => accounts,
@@ -265,54 +261,6 @@ function stopAutoLock() {
   document.addEventListener(evt, resetActivity, { passive: true });
 });
 
-// ── QR Scanner ─────────────────────────────────────────────
-dialogScan.addEventListener("click", async () => {
-  qrOverlay.classList.remove("hidden");
-  try {
-    await startCamera(async (uri) => {
-      qrOverlay.classList.add("hidden");
-      try {
-        await invoke("add_account_from_uri", { otpauthUri: uri });
-        toast("Account added from QR");
-        dialog.classList.add("hidden");
-        reloadAccountsAndCodes();
-      } catch (e) {
-        toast(typeof e === "string" ? e : "Failed to add from QR", true);
-      }
-    });
-  } catch (e) {
-    qrOverlay.classList.add("hidden");
-    toast(typeof e === "string" ? e : "Camera access denied", true);
-  }
-});
-
-qrCancel.addEventListener("click", () => {
-  stopCamera();
-  qrOverlay.classList.add("hidden");
-});
-
-document.addEventListener("paste", async (e) => {
-  if (qrOverlay.classList.contains("hidden")) return;
-  const items = e.clipboardData?.items;
-  if (!items) return;
-  for (const item of items) {
-    if (item.type.startsWith("image/")) {
-      e.preventDefault();
-      try {
-        const uri = await scanImage(item.getAsFile());
-        qrOverlay.classList.add("hidden");
-        stopCamera();
-        await invoke("add_account_from_uri", { otpauthUri: uri });
-        toast("Account added from QR");
-        dialog.classList.add("hidden");
-        reloadAccountsAndCodes();
-      } catch (err) {
-        toast("No QR code found in image", true);
-      }
-    }
-  }
-});
-
 // ── Search ─────────────────────────────────────────────────
 let searchTimer;
 searchInput.addEventListener("input", () => {
@@ -431,12 +379,10 @@ document.addEventListener("keydown", async (e) => {
 
   if (e.key === "Escape") {
     dialog.classList.add("hidden");
-    qrOverlay.classList.add("hidden");
     settingsOverlay.classList.add("hidden");
     deleteConfirmOverlay.classList.add("hidden");
     pendingDeleteId = null;
     hideContextMenu();
-    stopCamera();
     searchInput.blur();
   }
   if (e.ctrlKey && e.key === "n") {
