@@ -20,6 +20,7 @@ const lockOverlay = document.getElementById("lock-overlay");
 const lockInput = document.getElementById("lock-input");
 const lockSubmit = document.getElementById("lock-submit");
 const lockError = document.getElementById("lock-error");
+const lockClose = document.getElementById("lock-close");
 const toastBar = document.getElementById("toast-bar");
 const dialog = document.getElementById("account-dialog");
 const dialogTitle = document.getElementById("dialog-title");
@@ -213,6 +214,11 @@ const lock = createLockManager({
   lockInput,
   lockSubmit,
   lockError,
+  lockClose,
+  onClose: async () => {
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().close();
+  },
   onUnlock: async () => {
     await loadAccounts();      startCountdown(invoke, () => accounts, lock.getLocked, () => secondsRemaining, updateTrayIcon, toast);
       resetActivity();

@@ -48,7 +48,10 @@
       <!-- Lock overlay -->
       <div id="lock-overlay" class="hidden">
         <div id="lock-card">
-          <h2 id="lock-title">oz-auth is locked</h2>
+          <div class="lock-header">
+            <h2 id="lock-title">oz-auth is locked</h2>
+            <button id="lock-close" title="Close">&times;</button>
+          </div>
           <input type="password" id="lock-input" placeholder="Enter PIN" spellcheck="false" autocomplete="off" />
           <button id="lock-submit">Unlock</button>
           <div id="lock-error" class="hidden">Wrong PIN. Try again.</div>
