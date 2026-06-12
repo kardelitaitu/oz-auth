@@ -14,6 +14,7 @@ pub mod utils;
 // mod tests_integration;
 
 use std::sync::Mutex;
+use std::time::Instant;
 use tauri::window::Color;
 use tauri::Manager;
 use zeroize::Zeroizing;
@@ -25,6 +26,10 @@ use zeroize::Zeroizing;
 /// On Windows, `VirtualLock` prevents the key from being paged to disk.
 pub(crate) struct AppState {
     encryption_key: Mutex<Option<Zeroizing<[u8; 32]>>>,
+    /// Failed unlock attempts since last success (rate-limiting).
+    failed_attempts: Mutex<u32>,
+    /// Instant of the most recent failed unlock attempt.
+    last_attempt: Mutex<Option<Instant>>,
 }
 
 impl AppState {
@@ -60,6 +65,41 @@ impl AppState {
         }
         *guard = Some(wrapper);
         Ok(())
+    }
+
+    /// Reset rate-limit state after a successful unlock.
+    fn reset_rate_limit(&self) {
+        let mut fa = self.failed_attempts.lock().unwrap_or_else(|e| e.into_inner());
+        *fa = 0;
+        let mut la = self.last_attempt.lock().unwrap_or_else(|e| e.into_inner());
+        *la = None;
+    }
+
+    /// Check whether the current unlock attempt should be rate-limited.
+    /// Returns Ok(()) if the attempt is allowed, or Err(cooldown_remaining_secs).
+    fn check_rate_limit(&self) -> Result<(), u64> {
+        let attempts = *self.failed_attempts.lock().unwrap_or_else(|e| e.into_inner());
+        if attempts == 0 {
+            return Ok(());
+        }
+        // Exponential backoff: 2^(attempts-1) seconds, capped at 30
+        let cooldown = (1u64 << (attempts.min(6) - 1)).min(30);
+        let last = self.last_attempt.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(t) = *last {
+            let elapsed = t.elapsed().as_secs();
+            if elapsed < cooldown {
+                return Err(cooldown - elapsed);
+            }
+        }
+        Ok(())
+    }
+
+    /// Record a failed unlock attempt for rate-limiting.
+    fn record_failed_attempt(&self) {
+        let mut fa = self.failed_attempts.lock().unwrap_or_else(|e| e.into_inner());
+        *fa = fa.saturating_add(1);
+        let mut la = self.last_attempt.lock().unwrap_or_else(|e| e.into_inner());
+        *la = Some(Instant::now());
     }
 
     /// Clear the encryption key. `Zeroizing` ensures the bytes are overwritten on drop.
@@ -152,6 +192,8 @@ pub fn run() {
     tauri::Builder::default()
         .manage(AppState {
             encryption_key: Mutex::new(None),
+            failed_attempts: Mutex::new(0),
+            last_attempt: Mutex::new(None),
         })
         .manage(tray::TrayState::<tauri::Wry>::new())
         .setup(|app| {

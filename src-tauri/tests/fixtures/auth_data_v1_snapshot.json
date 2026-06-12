@@ -10,7 +10,8 @@
     "password_protected": false,
     "password_salt": "",
     "lock_timeout_seconds": 300,
-    "clipboard_clear_seconds": 30
+    "clipboard_clear_seconds": 30,
+    "lock_on_focus_loss": false
   },
   "accounts": {
     "encrypted": false,

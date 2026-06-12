@@ -80,6 +80,8 @@ pub fn decode_secret(input: &str) -> Result<Vec<u8>, String> {
 fn test_app_state() -> AppState {
     AppState {
         encryption_key: std::sync::Mutex::new(None),
+        failed_attempts: std::sync::Mutex::new(0),
+        last_attempt: std::sync::Mutex::new(None),
     }
 }
 

@@ -12,6 +12,7 @@ pub struct Config {
     pub password_salt: String,
     pub lock_timeout_seconds: u32,
     pub clipboard_clear_seconds: u32,
+    pub lock_on_focus_loss: bool,
 }
 
 /// Intermediate struct for deserialization — captures both old and new field names.
@@ -39,6 +40,8 @@ struct ConfigDe {
     lock_timeout_minutes: Option<u32>,
     #[serde(default = "default_clipboard_clear_seconds")]
     clipboard_clear_seconds: u32,
+    #[serde(default)]
+    lock_on_focus_loss: bool,
 }
 
 impl<'de> Deserialize<'de> for Config {
@@ -64,6 +67,7 @@ impl<'de> Deserialize<'de> for Config {
             password_salt: de.password_salt,
             lock_timeout_seconds,
             clipboard_clear_seconds: de.clipboard_clear_seconds,
+            lock_on_focus_loss: de.lock_on_focus_loss,
         })
     }
 }
@@ -109,6 +113,7 @@ impl Default for Config {
             password_salt: String::new(),
             lock_timeout_seconds: default_lock_timeout(),
             clipboard_clear_seconds: default_clipboard_clear_seconds(),
+            lock_on_focus_loss: false,
         }
     }
 }
@@ -143,6 +148,7 @@ mod tests {
             password_salt: "aabbccdd".to_string(),
             lock_timeout_seconds: 600,
             clipboard_clear_seconds: 15,
+            lock_on_focus_loss: true,
         };
         let json = serde_json::to_string_pretty(&cfg).unwrap();
         let restored: Config = serde_json::from_str(&json).unwrap();

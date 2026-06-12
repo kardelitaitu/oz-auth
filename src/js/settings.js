@@ -15,6 +15,7 @@ export function openSettings(config) {
     onLockNow,
     onClipboardClearSecondsChanged,
     onLockTimeoutChanged,
+    onFocusLossChanged,
     lockTimeoutSeconds,
     clipboardClearSeconds,
     appName,
@@ -97,6 +98,13 @@ export function openSettings(config) {
       </div>
       <div class="settings-section">
         <div class="settings-row">
+          <input type="checkbox" id="lock-on-focus-loss" />
+          <label for="lock-on-focus-loss" class="settings-row-label">Lock on focus loss</label>
+        </div>
+        <div class="settings-row-hint">Auto-lock when the window loses focus</div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-row">
           <label class="settings-row-label">Auto-clear clipboard (seconds)</label>
           <input type="number" id="clipboard-clear" value="${clipboardClearSeconds}" min="0" max="300" step="5" class="settings-row-input" />
         </div>
@@ -147,6 +155,14 @@ export function openSettings(config) {
       if (isNaN(val) || val < 0 || val > 3600) return;
       saveField("lock_timeout_seconds", val, onLockTimeoutChanged);
     });
+
+    const focusLossCb = document.getElementById("lock-on-focus-loss");
+    if (focusLossCb) {
+      focusLossCb.checked = cfg.lock_on_focus_loss === true;
+      focusLossCb.addEventListener("change", (e) => {
+        saveField("lock_on_focus_loss", e.target.checked, onFocusLossChanged);
+      });
+    }
 
     document.getElementById("clipboard-clear").addEventListener("input", (e) => {
       const val = parseInt(e.target.value, 10);

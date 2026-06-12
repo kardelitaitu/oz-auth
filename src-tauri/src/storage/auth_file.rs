@@ -881,6 +881,7 @@ mod tests {
                 password_salt: String::new(),
                 lock_timeout_seconds: 300,
                 clipboard_clear_seconds: 30,
+                lock_on_focus_loss: false,
             },
             accounts: AccountsPayload {
                 encrypted: false,

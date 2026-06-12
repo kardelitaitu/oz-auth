@@ -52,6 +52,12 @@ fn unlock_impl(pin: &str, state: &AppState) -> Result<bool, String> {
         return Err("PIN is not set".to_string());
     }
 
+    // Rate-limit check: enforce exponential backoff after failed attempts.
+    // Cooldown: 1s → 2s → 4s → 8s → 16s → 30s (cap).
+    if let Err(remaining) = state.check_rate_limit() {
+        return Err(format!("too many attempts — wait {}s", remaining));
+    }
+
     let mut salt = Zeroizing::new(
         hex::decode(&data.config.password_salt).map_err(|e| format!("invalid salt: {e}"))?,
     );
@@ -67,6 +73,7 @@ fn unlock_impl(pin: &str, state: &AppState) -> Result<bool, String> {
             accounts.clear();
             accounts.shrink_to_fit();
             state.set_key(key)?;
+            state.reset_rate_limit();
             key.zeroize();
             salt.zeroize();
             crate::diagnostics::event("security", "unlocked");
@@ -76,6 +83,7 @@ fn unlock_impl(pin: &str, state: &AppState) -> Result<bool, String> {
             // Constant-time: return Ok(false) for ALL errors
             // to prevent timing attackers from distinguishing
             // "wrong PIN" vs "corrupted data" vs other errors.
+            state.record_failed_attempt();
             key.zeroize();
             salt.zeroize();
             Ok(false)
@@ -227,6 +235,8 @@ mod tests {
     fn test_app_state() -> AppState {
         AppState {
             encryption_key: std::sync::Mutex::new(None),
+            failed_attempts: std::sync::Mutex::new(0),
+            last_attempt: std::sync::Mutex::new(None),
         }
     }
 
@@ -1330,6 +1340,201 @@ mod tests {
             // Verify get_key also returns None
             let retrieved = state.get_key().unwrap();
             assert!(retrieved.is_none(), "get_key must return None after lock");
+            cleanup_auth_file();
+        });
+    }
+
+    // ── Rate-limiting ───────────────────────────────────────
+    // Cooldown: 2^(attempts-1) seconds → 1s, 2s, 4s, 8s, 16s, 30s (cap).
+    // Implemented in AppState::{check_rate_limit, record_failed_attempt, reset_rate_limit}.
+    // unlock_impl calls check_rate_limit before key derivation and records failures.
+
+    #[test]
+    fn test_rate_limit_first_attempt_allowed() {
+        let state = test_app_state();
+        assert!(state.check_rate_limit().is_ok(), "first attempt must be allowed");
+    }
+
+    #[test]
+    fn test_rate_limit_second_attempt_blocked_within_cooldown() {
+        let state = test_app_state();
+        state.record_failed_attempt();
+        // Immediately after 1 failure → cooldown is 1s → must be blocked
+        let remaining = state.check_rate_limit().unwrap_err();
+        assert!(remaining > 0, "cooldown must be enforced; remaining={remaining}s");
+    }
+
+    #[test]
+    fn test_rate_limit_each_failure_resets_cooldown_timer() {
+        // record_failed_attempt updates the timestamp on EVERY call.
+        // This prevents an attacker from "pre-waiting" — they must wait
+        // the full cooldown after each failure.
+        let state = test_app_state();
+        state.record_failed_attempt();
+        assert!(
+            state.last_attempt.lock().unwrap().is_some(),
+            "first failure must record timestamp"
+        );
+        let t1 = state.last_attempt.lock().unwrap().unwrap();
+        state.record_failed_attempt();
+        let t2 = state.last_attempt.lock().unwrap().unwrap();
+        assert!(
+            t2 >= t1,
+            "each failure must update the cooldown timer"
+        );
+        // Counter must still increment
+        assert_eq!(*state.failed_attempts.lock().unwrap(), 2);
+    }
+
+    #[test]
+    fn test_rate_limit_exponential_backoff_boundaries() {
+        // Cooldown: 2^(attempts-1). Verify each tier by setting last_attempt
+        // to (cooldown-1)s ago (1s remaining) and cooldown ago (allowed).
+        let state = test_app_state();
+        let cases: &[(u32, u64)] = &[
+            (1, 1),
+            (2, 2),
+            (3, 4),
+            (4, 8),
+            (5, 16),
+            (6, 30),
+        ];
+        for &(attempts, cooldown) in cases {
+            *state.failed_attempts.lock().unwrap() = attempts;
+            // Set last_attempt to (cooldown - 1)s ago → 1s remaining
+            *state.last_attempt.lock().unwrap() =
+                Some(std::time::Instant::now() - std::time::Duration::from_secs(cooldown - 1));
+            let remaining = state.check_rate_limit().unwrap_err();
+            assert_eq!(
+                remaining, 1,
+                "attempts={attempts}: expected 1s remaining ({cooldown}s cooldown), got {remaining}s"
+            );
+
+            // Set last_attempt to exactly cooldown ago → allowed
+            *state.last_attempt.lock().unwrap() =
+                Some(std::time::Instant::now() - std::time::Duration::from_secs(cooldown));
+            assert!(
+                state.check_rate_limit().is_ok(),
+                "attempts={}: should be allowed after {cooldown}s cooldown",
+                attempts
+            );
+        }
+    }
+
+    #[test]
+    fn test_rate_limit_cap_at_30_seconds() {
+        let state = test_app_state();
+        // 50 failed attempts → cooldown capped at 30s, not 2^49
+        *state.failed_attempts.lock().unwrap() = 50;
+        *state.last_attempt.lock().unwrap() =
+            Some(std::time::Instant::now() - std::time::Duration::from_secs(29));
+        let remaining = state.check_rate_limit().unwrap_err();
+        assert_eq!(
+            remaining, 1,
+            "50 failures: cooldown must be capped at 30s, got {remaining}s remaining"
+        );
+
+        // After 30s elapsed → allowed
+        *state.last_attempt.lock().unwrap() =
+            Some(std::time::Instant::now() - std::time::Duration::from_secs(30));
+        assert!(
+            state.check_rate_limit().is_ok(),
+            "50 failures: must be allowed after 30s cap"
+        );
+    }
+
+    #[test]
+    fn test_rate_limit_saturating_add_prevents_wrap() {
+        let state = test_app_state();
+        *state.failed_attempts.lock().unwrap() = u32::MAX;
+        *state.last_attempt.lock().unwrap() = Some(std::time::Instant::now());
+        // record_failed_attempt uses saturating_add → stays at MAX, doesn't wrap to 0
+        state.record_failed_attempt();
+        let attempts = *state.failed_attempts.lock().unwrap();
+        assert_eq!(
+            attempts,
+            u32::MAX,
+            "saturating_add must prevent overflow wrap (got {attempts})"
+        );
+    }
+
+    #[test]
+    fn test_rate_limit_reset_clears_counter_and_timestamp() {
+        let state = test_app_state();
+        state.record_failed_attempt();
+        state.record_failed_attempt();
+        state.record_failed_attempt();
+        assert_eq!(*state.failed_attempts.lock().unwrap(), 3);
+
+        state.reset_rate_limit();
+        assert_eq!(
+            *state.failed_attempts.lock().unwrap(), 0,
+            "reset must clear counter"
+        );
+        assert!(
+            state.last_attempt.lock().unwrap().is_none(),
+            "reset must clear timestamp"
+        );
+        // After reset, first attempt must be allowed
+        assert!(
+            state.check_rate_limit().is_ok(),
+            "after reset, fresh attempt must be allowed"
+        );
+    }
+
+    #[test]
+    fn test_rate_limit_cooldown_expires_when_enough_time_passes() {
+        let state = test_app_state();
+        state.record_failed_attempt();
+        // Manually wind back the clock: last_attempt was 2s ago (cooldown = 1s)
+        *state.last_attempt.lock().unwrap() =
+            Some(std::time::Instant::now() - std::time::Duration::from_secs(2));
+        assert!(
+            state.check_rate_limit().is_ok(),
+            "cooldown must expire when enough time has elapsed"
+        );
+    }
+
+    #[test]
+    fn test_unlock_impl_rate_limited_after_wrong_pin() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let _key = seed_encrypted_auth();
+            // First attempt: wrong PIN → Ok(false) + records failed attempt
+            let result = unlock_impl("wrong", &state).unwrap();
+            assert!(!result, "wrong PIN must return false");
+
+            // Second attempt immediately after → rate-limited Err
+            let err = unlock_impl("mypin", &state).unwrap_err();
+            assert!(
+                err.contains("too many attempts"),
+                "immediate retry must be rate-limited: {err}"
+            );
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_unlock_impl_rate_limit_resets_on_success() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let _key = seed_encrypted_auth();
+            // Record one failed attempt
+            unlock_impl("wrong", &state).unwrap();
+            // Expire the cooldown by winding back the clock
+            *state.last_attempt.lock().unwrap() =
+                Some(std::time::Instant::now() - std::time::Duration::from_secs(2));
+
+            // Now unlock with correct PIN → must succeed and reset rate limit
+            let result = unlock_impl("mypin", &state).unwrap();
+            assert!(result, "correct PIN must succeed after cooldown expires");
+            assert!(state.has_key(), "key must be set after successful unlock");
+            assert_eq!(
+                *state.failed_attempts.lock().unwrap(), 0,
+                "rate limit counter must reset on successful unlock"
+            );
             cleanup_auth_file();
         });
     }

@@ -59,6 +59,7 @@ const secondsRemaining = {};
 let lockTimeoutSeconds = 300;
 let clipboardClearSeconds = 30;
 let passwordProtected = false;
+let lockOnFocusLoss = false;
 let appName = "oz-auth";
 let appVersion = "0.1.0";
 
@@ -364,6 +365,9 @@ btnSettings.addEventListener("click", () => {
       lockTimeoutSeconds = seconds;
       startAutoLock();
     },
+    onFocusLossChanged: (enabled) => {
+      lockOnFocusLoss = enabled;
+    },
     lockTimeoutSeconds,
     clipboardClearSeconds,
     appName,
@@ -494,6 +498,7 @@ document.addEventListener("keydown", async (e) => {
     clipboardClearSeconds = cfg.clipboard_clear_seconds || 30;
     clipboard.setClearSeconds(clipboardClearSeconds);
     passwordProtected = cfg.password_protected;
+    lockOnFocusLoss = cfg.lock_on_focus_loss ?? false;
 
     const isLocked = await lock.checkLock();
     if (!isLocked) {
@@ -510,6 +515,20 @@ document.addEventListener("keydown", async (e) => {
     });
 
     await trackWindow();
+
+    // Auto-lock on focus loss (if enabled)
+    const { getCurrentWindow: getWin } = await import("@tauri-apps/api/window");
+    const mainWindow = getWin();
+    mainWindow.onFocusChanged(async ({ payload: focused }) => {
+      if (!focused && lockOnFocusLoss && passwordProtected && !lock.getLocked()) {
+        try {
+          await invoke("lock");
+          lock.setLocked(true);
+          stopCountdown();
+          lock.show();
+        } catch (_) {}
+      }
+    });
   } catch (e) {
     console.error("init error:", e);
   }
