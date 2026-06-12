@@ -277,6 +277,7 @@ body.theme-dark, body:not(.theme-light) {
 .card-label {
   font-size: 12px;
   color: var(--btn-color);
+  opacity: 0.8;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
