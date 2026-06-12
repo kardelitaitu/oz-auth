@@ -209,6 +209,7 @@ body.theme-dark, body:not(.theme-light) {
   padding: 12px 14px;
   transition: border-color 0.15s, background 0.15s, transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
   cursor: grab;
+  touch-action: none;
 }
 
 .account-card:hover {
