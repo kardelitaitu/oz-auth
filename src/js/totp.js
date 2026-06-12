@@ -13,8 +13,9 @@ export function formatCode(code) {
 /**
  * Refresh all TOTP codes from the backend and update the DOM.
  * Returns the updated secondsRemaining map.
+ * `onError(msg, isError)` is called on failure so the caller can show a toast.
  */
-export async function refreshCodes(invoke, locked, secondsRemaining, updateBarsFn) {
+export async function refreshCodes(invoke, locked, secondsRemaining, updateBarsFn, onError) {
   if (locked) return secondsRemaining;
   try {
     const codes = await invoke("generate_all_codes");
@@ -26,6 +27,7 @@ export async function refreshCodes(invoke, locked, secondsRemaining, updateBarsF
     updateBarsFn();
   } catch (e) {
     console.error("generate_all_codes error:", e);
+    if (onError) onError(typeof e === "string" ? e : "Failed to refresh codes", true);
   }
   return secondsRemaining;
 }
@@ -47,13 +49,14 @@ export function updateBars(accounts, secondsRemaining) {
 /**
  * Start the 1-second countdown interval.
  * Returns a `stop` function.
+ * `onError(msg, isError)` forwarded to refreshCodes for toast visibility.
  */
-export function startCountdown(invoke, getAccounts, getLocked, getSecondsRemaining, updateTrayIcon) {
+export function startCountdown(invoke, getAccounts, getLocked, getSecondsRemaining, updateTrayIcon, onError) {
   const stopFn = stopCountdown;
 
   refreshCodes(invoke, getLocked(), getSecondsRemaining(), () =>
     updateBars(getAccounts(), getSecondsRemaining())
-  );
+  , onError);
 
   const interval = setInterval(() => {
     let needsRefresh = true;
@@ -79,6 +82,7 @@ export function startCountdown(invoke, getAccounts, getLocked, getSecondsRemaini
       updateTrayIcon(totalPct / count);
     }
     if (needsRefresh) {
+      // No onError here — interval failures shouldn't spam toasts every second
       refreshCodes(invoke, getLocked(), secs, () => updateBars(getAccounts(), secs));
     }
   }, 1000);
