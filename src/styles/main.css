@@ -206,7 +206,7 @@ body.theme-dark, body:not(.theme-light) {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: 6px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   transition: border-color 0.15s, background 0.15s, transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
   cursor: grab;
   touch-action: none;
@@ -247,7 +247,7 @@ body.theme-dark, body:not(.theme-light) {
   padding-right: 12px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
 .card-col-2 {
@@ -268,7 +268,7 @@ body.theme-dark, body:not(.theme-light) {
 
 .card-issuer {
   font-weight: 600;
-  font-size: 14px;
+  font-size: 15px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -286,7 +286,7 @@ body.theme-dark, body:not(.theme-light) {
 }
 
 .card-code {
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   letter-spacing: 3px;
   color: var(--code-color);
@@ -302,19 +302,19 @@ body.theme-dark, body:not(.theme-light) {
 
 .ring-bg {
   stroke: var(--bar-bg);
-  stroke-width: 3;
+  stroke-width: 4;
 }
 
 .ring-fg {
   stroke: var(--bar-fill);
-  stroke-width: 3;
+  stroke-width: 4;
   stroke-linecap: round;
   transition: stroke-dashoffset 1s linear, stroke 0.3s;
 }
 
 .ring-text {
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   fill: var(--code-color);
   text-anchor: middle;
