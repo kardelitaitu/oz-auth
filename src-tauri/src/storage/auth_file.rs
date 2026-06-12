@@ -9,6 +9,25 @@
 //! # Memory security
 //! All plaintext serialized JSON and decrypted buffers are zeroized
 //! after use to prevent secret recovery from memory dumps.
+//!
+//! # Adding new fields (backward-compatible)
+//! 1. Add the field to the Rust struct with `#[serde(default)]` or `#[serde(default = "fn")]`
+//! 2. If the default needs to be different from Rust's Default, write a default function
+//! 3. If the field is security-critical, add a check in `reconcile_invariants()`
+//! 4. Update `tests/fixtures/auth_data_v1_snapshot.json` by re-generating via the
+//!    `test_deterministic_auth_data_schema_snapshot` test
+//! 5. Add a unit test that deserializes old JSON (without the field) and verifies the default
+//!
+//! # Renaming a field
+//! 1. Add the new field with `#[serde(default)]` + `#[serde(alias = "old_name")]`
+//! 2. Add a version upgrade in `upgrade_data()` that copies old → new
+//! 3. Remove the old field in the NEXT version bump
+//!
+//! # Bumping the file format version
+//! 1. Increment `CURRENT_VERSION`
+//! 2. Add `upgrade_vN_to_vNplus1()` function in `upgrade_data()`
+//! 3. Update the schema snapshot fixture
+//! 4. Add compatibility tests for the old → new migration
 
 use crate::crypto;
 use crate::models::account::Account;
@@ -17,10 +36,19 @@ use zeroize::Zeroize;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AuthData {
+    /// File format version. Defaults to 0 when missing (triggers upgrade to CURRENT_VERSION).
+    #[serde(default = "default_version")]
     pub version: u32,
     pub config: crate::config::Config,
     pub accounts: AccountsPayload,
     pub log: String,
+    /// Optional user notes about this auth file. Added in v2.
+    #[serde(default)]
+    pub notes: String,
+}
+
+fn default_version() -> u32 {
+    0
 }
 
 /// On-disk representation of the accounts payload (supports encrypted + plaintext).
@@ -43,7 +71,7 @@ pub struct AccountsPayload {
     pub data_json: String,
 }
 
-const CURRENT_VERSION: u32 = 1;
+const CURRENT_VERSION: u32 = 2;
 
 /// Mutex that serializes tests touching the shared `.auth` file.
 #[cfg(test)]
@@ -74,7 +102,11 @@ pub fn try_load() -> Result<AuthData, String> {
     let mut data: AuthData = serde_json::from_str(&raw)
         .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
 
-    if reconcile_invariants(&mut data) {
+    // Run version upgrades + invariant reconciliation
+    let upgraded = upgrade_data(&mut data);
+    let reconciled = reconcile_invariants(&mut data);
+
+    if upgraded || reconciled {
         save(&data)?;
     }
 
@@ -143,6 +175,47 @@ pub fn load_accounts(data: &AuthData, key: Option<[u8; 32]>) -> Result<Vec<Accou
 
 // ── Internals ───────────────────────────────────────────────
 
+/// Run version upgrades on deserialized AuthData.
+/// Bumps version sequentially from current to CURRENT_VERSION.
+/// Returns true if any upgrade modified the data.
+fn upgrade_data(data: &mut AuthData) -> bool {
+    let mut changed = false;
+    let mut version = data.version;
+
+    // v0 (missing or default) → v1: ensure fresh defaults
+    if version < 1 {
+        data.version = 1;
+        version = 1;
+        changed = true;
+    }
+
+    // v1 → v2: add notes field
+    if version < 2 {
+        upgrade_v1_to_v2(data);
+        data.version = 2;
+        version = 2;
+        changed = true;
+    }
+
+    // Future: v2 → v3
+    // if version < 3 { upgrade_v2_to_v3(data); version = 3; changed = true; }
+
+    if changed {
+        data.version = version;
+    }
+    changed
+}
+
+/// Upgrade v1 → v2: add `notes` field (default empty string).
+fn upgrade_v1_to_v2(data: &mut AuthData) {
+    // `notes` was added with #[serde(default)], so serde already fills
+    // it with String::new() for v1 files. The upgrade just sets the
+    // version and logs the migration.
+    if data.notes.is_empty() {
+        data.notes = String::new();
+    }
+}
+
 fn fresh() -> AuthData {
     AuthData {
         version: CURRENT_VERSION,
@@ -154,6 +227,7 @@ fn fresh() -> AuthData {
             data_json: String::from("[]"),
         },
         log: String::new(),
+        notes: String::new(),
     }
 }
 
@@ -207,7 +281,7 @@ mod tests {
     #[test]
     fn test_fresh_defaults() {
         let data = fresh();
-        assert_eq!(data.version, 1);
+        assert_eq!(data.version, 2);
         assert!(!data.config.password_protected);
         assert!(!data.accounts.encrypted);
         assert_eq!(
@@ -245,7 +319,7 @@ mod tests {
         let data = fresh();
         let json = serde_json::to_string_pretty(&data).unwrap();
         let restored: AuthData = serde_json::from_str(&json).unwrap();
-        assert_eq!(restored.version, 1);
+        assert_eq!(restored.version, 2);
         assert!(!restored.config.password_protected);
     }
 
@@ -318,6 +392,7 @@ mod tests {
             config: crate::config::Config::default(),
             accounts: payload,
             log: String::new(),
+            notes: String::new(),
         };
         assert!(load_accounts(&data, None).is_err());
     }
@@ -334,6 +409,7 @@ mod tests {
                 data_json: serde_json::to_string(&vec![test_account()]).unwrap(),
             },
             log: String::new(),
+            notes: String::new(),
         };
         let mut accounts = load_accounts(&data, None).unwrap();
         assert_eq!(accounts.len(), 1);
@@ -565,7 +641,7 @@ mod tests {
     fn test_fresh_returns_valid_data() {
         // fresh() always returns a valid AuthData regardless of disk state
         let data = fresh();
-        assert_eq!(data.version, 1, "fresh data version must be 1");
+        assert_eq!(data.version, 2, "fresh data version must be 2");
         assert!(!data.config.password_protected);
         assert_eq!(data.accounts.data_json, "[]");
     }
@@ -577,7 +653,7 @@ mod tests {
         let json = serde_json::to_string_pretty(&data).unwrap();
         let restored: AuthData = serde_json::from_str(&json).unwrap();
         assert!(restored.log.is_empty(), "fresh log should be empty");
-        assert_eq!(restored.version, 1);
+        assert_eq!(restored.version, 2);
     }
 
     #[test]
@@ -628,6 +704,7 @@ mod tests {
             config: crate::config::Config::default(),
             accounts: payload,
             log: String::new(),
+            notes: String::new(),
         };
         let result = load_accounts(&data, Some(wrong_key));
         assert!(result.is_err(), "wrong key must fail decryption");
@@ -712,6 +789,259 @@ mod tests {
         let path = auth_path();
         let _ = std::fs::remove_file(&path);
         assert!(!exists(), "exists() should return false when no .auth file");
+    }
+
+    #[test]
+    fn test_try_load_with_corrupted_json_returns_error() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let path = auth_path();
+        let _ = std::fs::remove_file(&path);
+        std::fs::write(&path, "{{corrupted json[[[").unwrap();
+        let result = try_load();
+        assert!(result.is_err(), "try_load must return Err for corrupted JSON");
+        let err = result.unwrap_err();
+        assert!(err.contains("parse"), "error should mention parse: {err}");
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_decrypt_accounts_with_garbage_plaintext_fails() {
+        // Encrypt non-JSON data, then try to decrypt as accounts
+        let key = [0x99u8; 32];
+        let (nonce, ciphertext) = crate::crypto::encrypt("not valid json at all", &key).unwrap();
+        let payload = AccountsPayload {
+            encrypted: true,
+            nonce_hex: Some(hex::encode(&nonce)),
+            ciphertext_hex: Some(hex::encode(&ciphertext)),
+            data_json: String::new(),
+        };
+        let result = decrypt_accounts(&payload, &key);
+        assert!(result.is_err(), "non-JSON plaintext must fail to parse as accounts");
+        let err = result.unwrap_err();
+        assert!(err.contains("parse"), "error must mention parse failure: {err}");
+    }
+
+    #[test]
+    fn test_decrypt_plaintext_payload_invalid_json_fails() {
+        // Plaintext payload (not encrypted) with invalid JSON in data_json
+        let payload = AccountsPayload {
+            encrypted: false,
+            nonce_hex: None,
+            ciphertext_hex: None,
+            data_json: "{{not valid json}}".into(),
+        };
+        let key = [0xCCu8; 32];
+        let result = decrypt_accounts(&payload, &key);
+        assert!(result.is_err(), "invalid JSON in plaintext payload must fail");
+    }
+
+    // ── Version upgrade & compatibility tests ─────────────────
+
+    #[test]
+    fn test_missing_version_defaults_to_zero_and_upgraded() {
+        // File without a "version" key should default to 0, then be upgraded to CURRENT_VERSION
+        let json = r#"{"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":""}"#;
+        let data: AuthData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.version, 0, "missing version must default to 0");
+        let mut data = data;
+        assert!(upgrade_data(&mut data), "upgrade must bump version");
+        assert_eq!(data.version, CURRENT_VERSION);
+    }
+
+    #[test]
+    fn test_deterministic_auth_data_schema_snapshot() {
+        // Schema snapshot: verify serialized output matches committed fixture.
+        // If this test fails, the .auth file schema has changed.
+        // Update the fixture: re-run this test with --no-capture, copy the JSON
+        // to auth_data_v1_snapshot.json, and update CURRENT_VERSION if needed.
+        let data = AuthData {
+            version: CURRENT_VERSION,
+            config: crate::config::Config {
+                width: 400,
+                height: 600,
+                left: 50,
+                top: 100,
+                always_on_top: false,
+                theme: "dark".into(),
+                password_protected: false,
+                password_salt: String::new(),
+                lock_timeout_minutes: 5,
+                clipboard_clear_seconds: 30,
+            },
+            accounts: AccountsPayload {
+                encrypted: false,
+                nonce_hex: None,
+                ciphertext_hex: None,
+                data_json: "[]".into(),
+            },
+            log: String::new(),
+            notes: String::new(),
+        };
+        let json = serde_json::to_string_pretty(&data).unwrap();
+        let fixture = include_str!("../../tests/fixtures/auth_data_v1_snapshot.json");
+        // Trim both sides to ignore trailing newline differences
+        assert_eq!(
+            json.trim(),
+            fixture.trim(),
+            "\nSchema changed! Update tests/fixtures/auth_data_v1_snapshot.json\n\
+             Expected snapshot (from fixture):\n{}\n\
+             Actual output:\n{}",
+            fixture.trim(),
+            json.trim()
+        );
+    }
+
+    #[test]
+    fn test_unknown_fields_in_old_file_ignored_during_parse() {
+        // Old file with extra unknown keys should not crash
+        let json = r#"{"version":1,"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":"","unknown_section":{"some_key":"some_value"},"another_unknown_field":42}"#;
+        let data: AuthData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.version, 1);
+        assert_eq!(data.config.width, 320);
+        // Unknown fields are silently dropped — no crash
+    }
+
+    #[test]
+    fn test_upgrade_from_missing_version_saves_to_disk() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let path = auth_path();
+        let _ = std::fs::remove_file(&path);
+
+        // Write a file without version field
+        let json = r#"{"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":""}"#;
+        std::fs::write(&path, json).unwrap();
+
+        // Load triggers upgrade
+        let data = try_load().unwrap();
+        assert_eq!(data.version, CURRENT_VERSION, "version must be upgraded");
+        // Verify file was rewritten with version
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let saved: AuthData = serde_json::from_str(&raw).unwrap();
+        assert_eq!(saved.version, CURRENT_VERSION, "file must persist the upgrade");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_version_0_file_upgraded_to_current() {
+        // Explicit version:0 should also be upgraded
+        let json = r#"{"version":0,"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":""}"#;
+        let mut data: AuthData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.version, 0);
+        assert!(upgrade_data(&mut data), "v0 must be upgraded");
+        assert_eq!(data.version, CURRENT_VERSION);
+    }
+
+    #[test]
+    fn test_version_already_current_no_upgrade_needed() {
+        let mut data = fresh();
+        assert_eq!(data.version, CURRENT_VERSION);
+        assert!(!upgrade_data(&mut data), "already current → no upgrade");
+    }
+
+    #[test]
+    fn test_version_greater_than_current_skips_upgrade() {
+        // File with version > CURRENT_VERSION should load, skip upgrade, not save
+        let json = r#"{"version":999,"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":""}"#;
+        let mut data: AuthData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.version, 999);
+        // upgrade_data should NOT bump version (it's already > CURRENT)
+        assert!(!upgrade_data(&mut data), "version > CURRENT must not be upgraded");
+        assert_eq!(data.version, 999, "version must be preserved");
+    }
+
+    #[test]
+    fn test_version_greater_than_current_does_not_crash_on_load() {
+        // End-to-end: write a v999 file to disk, load it, verify no crash
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let path = auth_path();
+        let _ = std::fs::remove_file(&path);
+
+        let json = r#"{"version":999,"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":""}"#;
+        std::fs::write(&path, json).unwrap();
+
+        // try_load should succeed — no crash, no save
+        let data = try_load().unwrap();
+        assert_eq!(data.version, 999, "version > CURRENT must be preserved");
+        assert!(!data.config.password_protected);
+
+        // Verify file was NOT rewritten (should still have v999, not CURRENT_VERSION=2)
+        let raw = std::fs::read_to_string(&path).unwrap();
+        assert!(!raw.contains(r#""version":2"#), "file must not be rewritten for version > CURRENT");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    // ── v2 migration tests ────────────────────────────────────
+
+    #[test]
+    fn test_v1_file_has_notes_default() {
+        // A v1 JSON (without 'notes' field) should get notes = "" via serde default
+        let json = r#"{"version":1,"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":""}"#;
+        let data: AuthData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.version, 1);
+        assert!(data.notes.is_empty(), "v1 file must default to empty notes");
+    }
+
+    #[test]
+    fn test_v1_to_v2_upgrade_adds_notes() {
+        // A v1 file loaded via try_load should be upgraded to v2
+        let json = r#"{"version":1,"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":""}"#;
+        let mut data: AuthData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.version, 1);
+        assert!(upgrade_data(&mut data), "v1 must trigger upgrade");
+        assert_eq!(data.version, 2, "v1 must be upgraded to v2");
+        assert!(data.notes.is_empty(), "upgraded notes must be empty");
+    }
+
+    #[test]
+    fn test_v1_file_upgraded_to_v2_on_disk() {
+        // Write a v1 file to disk, load it, verify it gets upgraded to v2
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let path = auth_path();
+        let _ = std::fs::remove_file(&path);
+
+        let v1_json = r#"{"version":1,"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":""}"#;
+        std::fs::write(&path, v1_json).unwrap();
+
+        let data = try_load().unwrap();
+        assert_eq!(data.version, 2, "v1 file must be upgraded to v2 on load");
+        assert!(data.notes.is_empty());
+
+        // Verify disk was updated
+        let raw = std::fs::read_to_string(&path).unwrap();
+        let saved: AuthData = serde_json::from_str(&raw).unwrap();
+        assert_eq!(saved.version, 2, "v2 must be persisted to disk");
+        assert_eq!(saved.notes, "", "notes must be persisted to disk");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_v2_file_with_notes_preserved_on_roundtrip() {
+        // A v2 file with custom notes should preserve them through save/load
+        let _lock = FS_TEST_MUTEX.lock().unwrap();
+        let path = auth_path();
+        let _ = std::fs::remove_file(&path);
+
+        let v2_json = r#"{"version":2,"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":"","notes":"My custom notes"}"#;
+        std::fs::write(&path, v2_json).unwrap();
+
+        let data = try_load().unwrap();
+        assert_eq!(data.version, 2);
+        assert_eq!(data.notes, "My custom notes", "notes must be preserved");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_v0_file_upgraded_through_v1_to_v2() {
+        // A v0 file should be upgraded v0→v1→v2 in sequence
+        let json = r#"{"version":0,"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":""}"#;
+        let mut data: AuthData = serde_json::from_str(json).unwrap();
+        assert_eq!(data.version, 0);
+        assert!(upgrade_data(&mut data), "v0 must trigger upgrade chain");
+        assert_eq!(data.version, 2, "v0 must be upgraded all the way to v2");
     }
 
     #[test]

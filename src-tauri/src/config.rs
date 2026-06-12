@@ -2,10 +2,15 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Config {
+    #[serde(default = "default_width")]
     pub width: u32,
+    #[serde(default = "default_height")]
     pub height: u32,
+    #[serde(default = "default_left")]
     pub left: i32,
+    #[serde(default = "default_top")]
     pub top: i32,
+    #[serde(default)]
     pub always_on_top: bool,
     #[serde(default = "default_theme")]
     pub theme: String,
@@ -17,6 +22,22 @@ pub struct Config {
     pub lock_timeout_minutes: u32,
     #[serde(default = "default_clipboard_clear_seconds")]
     pub clipboard_clear_seconds: u32,
+}
+
+fn default_width() -> u32 {
+    320
+}
+
+fn default_height() -> u32 {
+    480
+}
+
+fn default_left() -> i32 {
+    100
+}
+
+fn default_top() -> i32 {
+    100
 }
 
 fn default_theme() -> String {
@@ -194,6 +215,19 @@ mod tests {
         let restored: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.left, -1920);
         assert_eq!(restored.top, -100);
+    }
+
+    #[test]
+    fn test_config_serde_defaults_for_missing_window_fields() {
+        // Config JSON without width/height/left/top/always_on_top should use defaults
+        let json = r#"{"password_protected":false}"#;
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.width, 320, "missing width must default to 320");
+        assert_eq!(cfg.height, 480, "missing height must default to 480");
+        assert_eq!(cfg.left, 100, "missing left must default to 100");
+        assert_eq!(cfg.top, 100, "missing top must default to 100");
+        assert!(!cfg.always_on_top, "missing always_on_top must default to false");
+        assert_eq!(cfg.theme, "dark");
     }
 
     #[test]

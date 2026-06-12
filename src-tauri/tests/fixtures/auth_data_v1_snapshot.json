@@ -1,0 +1,21 @@
+{
+  "version": 2,
+  "config": {
+    "width": 400,
+    "height": 600,
+    "left": 50,
+    "top": 100,
+    "always_on_top": false,
+    "theme": "dark",
+    "password_protected": false,
+    "password_salt": "",
+    "lock_timeout_minutes": 5,
+    "clipboard_clear_seconds": 30
+  },
+  "accounts": {
+    "encrypted": false,
+    "data_json": "[]"
+  },
+  "log": "",
+  "notes": ""
+}
