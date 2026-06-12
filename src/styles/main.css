@@ -233,17 +233,35 @@ body.theme-dark, body:not(.theme-light) {
   transform: scale(1.02);
 }
 
-.card-row1 {
+.card-main-row {
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  gap: 0;
 }
 
-.card-row1-right {
+.card-col-1 {
+  flex: 0 0 50%;
+  min-width: 0;
+  padding-right: 12px;
   display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.card-col-2 {
+  flex: 0 0 35%;
+  min-width: 0;
+  text-align: center;
+  padding: 0 8px;
+}
+
+.card-col-3 {
+  flex: 0 0 15%;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
   align-items: center;
-  gap: 6px;
-  flex-shrink: 0;
+  padding-left: 4px;
 }
 
 .card-issuer {
@@ -253,14 +271,6 @@ body.theme-dark, body:not(.theme-light) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-right: 8px;
-}
-
-.card-row2 {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-top: 6px;
 }
 
 .card-label {
@@ -270,24 +280,6 @@ body.theme-dark, body:not(.theme-light) {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-right: 8px;
-}
-
-.card-delete {
-  background: none;
-  border: none;
-  color: var(--btn-color);
-  font-size: 16px;
-  cursor: pointer;
-  padding: 0 4px;
-  line-height: 1;
-  opacity: 0.5;
-  transition: opacity 0.1s, color 0.1s;
-}
-
-.card-delete:hover {
-  opacity: 1;
-  color: var(--close-bg);
 }
 
 .card-code {
@@ -325,12 +317,6 @@ body.theme-dark, body:not(.theme-light) {
   text-anchor: middle;
   dominant-baseline: central;
   transition: fill 0.3s;
-}
-
-.card-timer {
-  font-size: 12px;
-  color: var(--btn-color);
-  flex-shrink: 0;
 }
 
 /* === Lock overlay === */
@@ -687,24 +673,6 @@ body.theme-dark, body:not(.theme-light) {
 .ctx-delete:hover {
   background: var(--close-bg);
   color: #fff;
-}
-
-/* === Card edit button === */
-.card-edit {
-  background: none;
-  border: none;
-  color: var(--btn-color);
-  font-size: 15px;
-  cursor: pointer;
-  padding: 0 2px;
-  line-height: 1;
-  opacity: 0.5;
-  transition: opacity 0.1s, color 0.1s;
-}
-
-.card-edit:hover {
-  opacity: 1;
-  color: var(--code-color);
 }
 
 /* === About section (in Settings) === */

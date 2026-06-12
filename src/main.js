@@ -76,8 +76,6 @@ async function loadAccounts(query = "") {
     accounts.push(...result);
     renderAccounts(accounts, accountList, {
       onCopy: (id) => clipboard.copy(id),
-      onEdit: (id) => accountDialog.openEdit(id),
-      onDelete: (id) => confirmDeleteAccount(id),
       onContextMenu: showContextMenu,
     });
   } catch (e) {
@@ -201,8 +199,6 @@ async function onReorder(srcId, targetId) {
 
   renderAccounts(accounts, accountList, {
     onCopy: (id) => clipboard.copy(id),
-    onEdit: (id) => accountDialog.openEdit(id),
-    onDelete: (id) => confirmDeleteAccount(id),
     onContextMenu: showContextMenu,
   });
   refreshCodes(invoke, lock.getLocked(), secondsRemaining, () => updateBars(accounts, secondsRemaining), toast);
