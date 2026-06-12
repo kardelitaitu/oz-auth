@@ -91,7 +91,7 @@ async function deleteAccount(id) {
     toast("Account deleted");
     hideContextMenu();
     await loadAccounts();
-    refreshCodes(invoke, lock.getLocked(), secondsRemaining, () => updateBars(accounts, secondsRemaining));
+    refreshCodes(invoke, lock.getLocked(), secondsRemaining, () => updateBars(accounts, secondsRemaining), toast);
   } catch (e) {
     toast("Delete failed", true);
   }
@@ -99,7 +99,7 @@ async function deleteAccount(id) {
 
 function reloadAccountsAndCodes() {
   loadAccounts().then(() => {
-    refreshCodes(invoke, lock.getLocked(), secondsRemaining, () => updateBars(accounts, secondsRemaining));
+    refreshCodes(invoke, lock.getLocked(), secondsRemaining, () => updateBars(accounts, secondsRemaining), toast);
   });
 }
 
@@ -180,7 +180,7 @@ async function onReorder(srcId, targetId) {
     onDelete: (id) => deleteAccount(id),
     onContextMenu: showContextMenu,
   });
-  refreshCodes(invoke, lock.getLocked(), secondsRemaining, () => updateBars(accounts, secondsRemaining));
+  refreshCodes(invoke, lock.getLocked(), secondsRemaining, () => updateBars(accounts, secondsRemaining), toast);
 }
 
 setupDragDrop(accountList, accountList, onReorder);
@@ -193,11 +193,10 @@ const lock = createLockManager({
   lockSubmit,
   lockError,
   onUnlock: async () => {
-    await loadAccounts();
-    startCountdown(invoke, () => accounts, lock.getLocked, () => secondsRemaining, updateTrayIcon);
-    resetActivity();
-  },
-  onLockStart: () => stopAutoLock(),
+    await loadAccounts();      startCountdown(invoke, () => accounts, lock.getLocked, () => secondsRemaining, updateTrayIcon, toast);
+      resetActivity();
+    },
+    onLockStart: () => stopAutoLock(),
   onLockEnd: () => startAutoLock(),
 });
 
@@ -454,7 +453,7 @@ document.addEventListener("keydown", async (e) => {
     const isLocked = await lock.checkLock();
     if (!isLocked) {
       await loadAccounts();
-      startCountdown(invoke, () => accounts, lock.getLocked, () => secondsRemaining, updateTrayIcon);
+      startCountdown(invoke, () => accounts, lock.getLocked, () => secondsRemaining, updateTrayIcon, toast);
       startAutoLock();
     }
 
