@@ -752,15 +752,6 @@ body.theme-dark, body:not(.theme-light) {
   border-top: 1px solid var(--card-border);
 }
 
-.about-icon {
-  margin-bottom: 8px;
-}
-
-.about-icon img {
-  border-radius: 12px;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-}
-
 .about-name {
   font-size: 16px;
   font-weight: 700;
@@ -789,6 +780,80 @@ body.theme-dark, body:not(.theme-light) {
   margin-top: 4px;
   font-size: 10px;
   opacity: 0.6;
+}
+
+/* === Delete confirmation overlay === */
+#delete-confirm-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--overlay-bg);
+  z-index: 110;
+  backdrop-filter: blur(6px);
+}
+
+#delete-confirm-overlay.hidden {
+  display: none;
+}
+
+#delete-confirm-card {
+  background: var(--dialog-bg);
+  border: 1px solid var(--close-bg);
+  border-radius: 8px;
+  padding: 24px;
+  width: 280px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+}
+
+#delete-confirm-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--close-bg);
+}
+
+#delete-confirm-msg {
+  font-size: 13px;
+  color: var(--btn-color);
+  margin-bottom: 4px;
+}
+
+#delete-confirm-submit {
+  flex: 1;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.1s;
+  background: var(--close-bg);
+  border: none;
+  color: #fff;
+}
+
+#delete-confirm-submit:hover {
+  opacity: 0.85;
+}
+
+#delete-confirm-cancel {
+  flex: 1;
+  padding: 8px;
+  border-radius: 4px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.1s;
+  background: transparent;
+  border: 1px solid var(--input-border);
+  color: var(--text);
+}
+
+#delete-confirm-cancel:hover {
+  opacity: 0.8;
 }
 
 /* === Toast === */
