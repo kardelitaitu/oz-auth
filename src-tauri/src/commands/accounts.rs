@@ -33,14 +33,29 @@ fn zeroize_accounts(accounts: &mut Vec<Account>) {
     accounts.clear();
 }
 
+/// Reject a secret shorter than 128 bits (16 bytes) — totp_rs requires it for HMAC.
+fn validate_secret_length(secret: &[u8]) -> Result<(), String> {
+    if secret.len() < 16 {
+        return Err(format!(
+            "secret too short: {} bits ({} bytes), need at least 128 bits (16 bytes)",
+            secret.len() * 8,
+            secret.len()
+        ));
+    }
+    Ok(())
+}
+
 /// Decode a secret that may be base32-encoded (manual entry) or raw bytes.
+/// Requires at least 128 bits (16 bytes) — totp_rs rejects shorter HMAC keys.
 fn decode_secret(input: &str) -> Result<Vec<u8>, String> {
     let trimmed: String = input.chars().filter(|c| !c.is_whitespace()).collect();
-    base32::decode(
+    let secret = base32::decode(
         Alphabet::Rfc4648 { padding: false },
         &trimmed.to_uppercase(),
     )
-    .ok_or_else(|| "invalid base32 secret".to_string())
+    .ok_or_else(|| "invalid base32 secret".to_string())?;
+    validate_secret_length(&secret)?;
+    Ok(secret)
 }
 
 #[cfg(test)]
@@ -51,22 +66,23 @@ mod tests {
 
     #[test]
     fn test_decode_secret_valid_base32() {
-        // GEZDGNBVGY3TQOJQ is the RFC 6238 test secret in base32 (decodes to "1234567890")
-        let result = decode_secret("GEZDGNBVGY3TQOJQ").unwrap();
-        assert_eq!(result, b"1234567890");
+        // HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ is 32 chars → 20 bytes (160 bits)
+        let result = decode_secret("HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ").unwrap();
+        assert_eq!(result.len(), 20);
+        assert!(result.len() >= 16, "must be at least 128 bits");
     }
 
     #[test]
     fn test_decode_secret_with_whitespace() {
-        let result = decode_secret("GEZD GNBV GY3T QOJQ").unwrap();
-        assert_eq!(result, b"1234567890");
+        let result = decode_secret("HXDM VJEC JJWS RB3H WIZR 4IFU GFTM XBOZ").unwrap();
+        assert!(result.len() >= 16);
     }
 
     #[test]
     fn test_decode_secret_lowercase() {
-        let result = decode_secret("gezdgnbvg63tqojq").unwrap();
-        // Lowercase base32 decodes to same bytes; verify non-empty
-        assert!(!result.is_empty());
+        // HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ in lowercase
+        let result = decode_secret("hxdmvjecjjwsrb3hwizr4ifugftmxboz").unwrap();
+        assert!(result.len() >= 16);
     }
 
     #[test]
@@ -76,15 +92,16 @@ mod tests {
 
     #[test]
     fn test_decode_secret_empty() {
-        // Empty string decodes to empty bytes (base32 decodes "" to Some(vec![]))
-        let result = decode_secret("").unwrap();
-        assert!(result.is_empty());
+        // Empty string decodes to empty bytes → rejected as too short
+        assert!(decode_secret("").is_err());
     }
 
     #[test]
-    fn test_decode_secret_rfc4648_standard() {
-        let result = decode_secret("HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ").unwrap();
-        assert!(!result.is_empty());
+    fn test_decode_secret_too_short() {
+        // GEZDGNBVGY3TQOJQ (RFC 6238) decodes to 10 bytes (80 bits) — rejected
+        let err = decode_secret("GEZDGNBVGY3TQOJQ").unwrap_err();
+        assert!(err.contains("too short"), "must reject secrets < 128 bits: {err}");
+        assert!(err.contains("80 bits"), "should mention bit count: {err}");
     }
 
     // ── Storage-level integration tests ──────────────────────
@@ -462,6 +479,9 @@ pub fn add_account_from_uri(
     state: State<'_, AppState>,
 ) -> Result<Account, String> {
     let parsed = crate::utils::otpauth::parse_uri(&otpauth_uri)?;
+
+    // Validate secret length early — before any disk I/O
+    validate_secret_length(&parsed.secret)?;
 
     let mut data = try_load()?;
     let key_wrapper = state.get_key()?;

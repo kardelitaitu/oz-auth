@@ -38,7 +38,7 @@ const qrCancel = document.getElementById("qr-cancel");
 const settingsOverlay = document.getElementById("settings-overlay");
 const settingsTitle = document.getElementById("settings-title");
 const settingsBody = document.getElementById("settings-body");
-const settingsCancel = document.getElementById("settings-cancel");
+const settingsCloseBtn = document.getElementById("settings-close-btn");
 const contextMenu = document.getElementById("context-menu");
 const deleteConfirmOverlay = document.getElementById("delete-confirm-overlay");
 const deleteConfirmMsg = document.getElementById("delete-confirm-msg");
@@ -368,7 +368,7 @@ btnSettings.addEventListener("click", () => {
     settingsOverlay,
     settingsTitle,
     settingsBody,
-    settingsCancel,
+    settingsCloseBtn,
   });
 });
 
