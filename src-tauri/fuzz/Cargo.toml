@@ -1,0 +1,35 @@
+[package]
+name = "oz-auth-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+
+[dependencies.oz-auth]
+path = ".."
+
+[[bin]]
+name = "parse_uri"
+path = "fuzz_targets/parse_uri.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decode_secret"
+path = "fuzz_targets/decode_secret.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "decrypt"
+path = "fuzz_targets/decrypt.rs"
+test = false
+doc = false
+bench = false
