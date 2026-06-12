@@ -38,13 +38,13 @@ export function renderAccounts(accounts, accountListEl, callbacks) {
           <span class="card-code" data-id="${a.id}">------</span>
         </div>
         <div class="card-col-3">
-          <svg class="card-ring" viewBox="0 0 36 36" width="36" height="36" data-id="${a.id}">
-            <circle cx="18" cy="18" r="15" fill="none" class="ring-bg"/>
-            <circle cx="18" cy="18" r="15" fill="none" class="ring-fg"
+          <svg class="card-ring" viewBox="0 0 44 44" width="44" height="44" data-id="${a.id}">
+            <circle cx="22" cy="22" r="19" fill="none" class="ring-bg"/>
+            <circle cx="22" cy="22" r="19" fill="none" class="ring-fg"
               data-id="${a.id}"
-              stroke-dasharray="94.248" stroke-dashoffset="94.248"
-              transform="rotate(-90 18 18)"/>
-            <text x="18" y="18" data-id="${a.id}" class="ring-text">--</text>
+              stroke-dasharray="119.381" stroke-dashoffset="119.381"
+              transform="rotate(-90 22 22)"/>
+            <text x="22" y="22" data-id="${a.id}" class="ring-text">--</text>
           </svg>
         </div>
       </div>

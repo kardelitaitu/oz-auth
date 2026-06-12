@@ -49,7 +49,7 @@ export function updateBars(accounts, secondsRemaining) {
     const remaining = secondsRemaining[a.id] || a.period;
     const elapsed = a.period - remaining;
     const pctRemaining = remaining / a.period;
-    const circumference = 94.248; // 2 * π * 15
+    const circumference = 119.381; // 2 * π * 19
     const offset = (elapsed / a.period) * circumference;
     const color = getRingColor(pctRemaining);
 
