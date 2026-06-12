@@ -183,11 +183,12 @@ contextMenu.querySelector('[data-action="edit"]').addEventListener("click", () =
 
 contextMenu.querySelector('[data-action="qr"]').addEventListener("click", async () => {
   if (!contextAccountId) return;
+  const accountId = contextAccountId;
+  const account = accounts.find((a) => a.id === accountId);
   hideContextMenu();
-  const account = accounts.find((a) => a.id === contextAccountId);
   if (!account) return;
   try {
-    const uri = await invoke("get_otpauth_uri", { accountId: contextAccountId });
+    const uri = await invoke("get_otpauth_uri", { accountId });
     qrTitle.textContent = `${account.issuer} — ${account.label}`;
     // Generate QR code on canvas
     QRCode.toCanvas(qrCanvas, uri, {
