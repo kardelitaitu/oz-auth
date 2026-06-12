@@ -599,9 +599,37 @@ body.theme-dark, body:not(.theme-light) {
   gap: 12px;
 }
 
+.settings-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
 #settings-title {
   font-size: 16px;
   font-weight: 600;
+}
+
+#settings-close-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--btn-color);
+  font-size: 20px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s, color 0.1s;
+  line-height: 1;
+  flex-shrink: 0;
+}
+
+#settings-close-btn:hover {
+  background: var(--close-bg);
+  color: #fff;
 }
 
 #settings-body {
@@ -763,23 +791,38 @@ body.theme-dark, body:not(.theme-light) {
   font-size: 12px;
   color: var(--code-color);
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
-  margin-bottom: 10px;
+  cursor: pointer;
+  transition: opacity 0.1s, text-decoration 0.1s;
 }
 
-.about-credits {
-  font-size: 11px;
-  color: var(--btn-color);
-  line-height: 1.6;
+.about-version:hover {
+  opacity: 0.8;
+  text-decoration: underline;
 }
 
-.about-credits strong {
-  color: var(--text);
+/* === Settings PIN row (inline button) === */
+.settings-pin-row {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
 }
 
-.about-copyright {
-  margin-top: 4px;
-  font-size: 10px;
-  opacity: 0.6;
+.settings-pin-inputs {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.settings-pin-inputs input {
+  width: 100%;
+}
+
+.settings-pin-btn {
+  width: auto !important;
+  padding: 8px 16px !important;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* === Delete confirmation overlay === */

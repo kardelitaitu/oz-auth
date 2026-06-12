@@ -20,17 +20,17 @@ export function openSettings(config) {
     settingsOverlay,
     settingsTitle,
     settingsBody,
-    settingsCancel,
+    settingsCloseBtn,
   } = config;
 
   settingsOverlay.classList.remove("hidden");
 
-  // Clean up previous cancel handler to prevent listener accumulation
+  // Clean up previous close handler to prevent listener accumulation
   if (cancelHandler) {
-    settingsCancel.removeEventListener("click", cancelHandler);
+    settingsCloseBtn.removeEventListener("click", cancelHandler);
   }
   cancelHandler = () => settingsOverlay.classList.add("hidden");
-  settingsCancel.addEventListener("click", cancelHandler);
+  settingsCloseBtn.addEventListener("click", cancelHandler);
 
   invoke("load_config").then((cfg) => {
     const hasPin = cfg.password_protected;
@@ -42,11 +42,15 @@ export function openSettings(config) {
       html += `
         <div class="settings-section">
           <h3>Change PIN</h3>
-          <input type="password" id="pin-old" placeholder="Current PIN" spellcheck="false" autocomplete="off" />
-          <input type="password" id="pin-new" placeholder="New PIN" spellcheck="false" autocomplete="off" />
-          <input type="password" id="pin-confirm" placeholder="Confirm new PIN" spellcheck="false" autocomplete="off" />
+          <div class="settings-pin-row">
+            <div class="settings-pin-inputs">
+              <input type="password" id="pin-old" placeholder="Current PIN" spellcheck="false" autocomplete="off" />
+              <input type="password" id="pin-new" placeholder="New PIN" spellcheck="false" autocomplete="off" />
+              <input type="password" id="pin-confirm" placeholder="Confirm new PIN" spellcheck="false" autocomplete="off" />
+            </div>
+            <button class="settings-btn primary settings-pin-btn" id="pin-change-btn">Change</button>
+          </div>
           <div class="settings-error hidden" id="pin-error"></div>
-          <button class="settings-btn primary" id="pin-change-btn">Change PIN</button>
         </div>
         <div class="settings-section">
           <h3>Security</h3>
@@ -57,10 +61,14 @@ export function openSettings(config) {
       html += `
         <div class="settings-section">
           <h3>Set PIN</h3>
-          <input type="password" id="pin-new" placeholder="New PIN" spellcheck="false" autocomplete="off" />
-          <input type="password" id="pin-confirm" placeholder="Confirm new PIN" spellcheck="false" autocomplete="off" />
+          <div class="settings-pin-row">
+            <div class="settings-pin-inputs">
+              <input type="password" id="pin-new" placeholder="New PIN" spellcheck="false" autocomplete="off" />
+              <input type="password" id="pin-confirm" placeholder="Confirm new PIN" spellcheck="false" autocomplete="off" />
+            </div>
+            <button class="settings-btn primary settings-pin-btn" id="pin-set-btn">Set</button>
+          </div>
           <div class="settings-error hidden" id="pin-error"></div>
-          <button class="settings-btn primary" id="pin-set-btn">Set PIN</button>
         </div>
       `;
     }
@@ -79,7 +87,6 @@ export function openSettings(config) {
         <h3>Clipboard</h3>
         <label style="font-size:12px;color:var(--btn-color);">Auto-clear after (seconds):</label>
         <input type="number" id="clipboard-clear" value="${clipboardClearSeconds}" min="5" max="300" step="5" style="width:80px;margin-top:4px;" />
-        <button class="settings-btn primary" id="clipboard-save-btn" style="margin-top:4px;">Save</button>
         <div class="settings-error hidden" id="clipboard-error"></div>
       </div>
     `;
@@ -87,37 +94,32 @@ export function openSettings(config) {
     html += `
       <div class="settings-section settings-about">
         <div class="about-name">${appName}</div>
-        <div class="about-version">v${appVersion}</div>
-        <div class="about-credits">
-          <p>A secure, offline TOTP authenticator</p>
-          <p>Built with <strong>Tauri v2</strong> + <strong>Rust</strong></p>
-          <p class="about-copyright">&copy; ${new Date().getFullYear()} ${appName}</p>
-        </div>
+        <div class="about-version" id="about-version-link" title="View on GitHub">v${appVersion}</div>
       </div>
     `;
 
     settingsBody.innerHTML = html;
     const pinError = document.getElementById("pin-error");
 
-    // Clipboard timeout save
-    document.getElementById("clipboard-save-btn").addEventListener("click", async () => {
-      const val = parseInt(document.getElementById("clipboard-clear").value, 10);
-      const clipError = document.getElementById("clipboard-error");
-      if (isNaN(val) || val < 5 || val > 300) {
-        clipError.textContent = "Must be 5–300 seconds";
-        clipError.classList.remove("hidden");
-        return;
-      }
-      try {
-        const cfg = await invoke("load_config");
-        cfg.clipboard_clear_seconds = val;
-        await invoke("save_config", { cfg });
-        toast("Clipboard timeout saved");
-        if (onClipboardClearSecondsChanged) onClipboardClearSecondsChanged(val);
-      } catch (e) {
-        clipError.textContent = typeof e === "string" ? e : "Failed to save";
-        clipError.classList.remove("hidden");
-      }
+    // Clipboard timeout auto-save on change
+    let clipboardSaveTimer;
+    document.getElementById("clipboard-clear").addEventListener("input", () => {
+      clearTimeout(clipboardSaveTimer);
+      clipboardSaveTimer = setTimeout(async () => {
+        const val = parseInt(document.getElementById("clipboard-clear").value, 10);
+        const clipError = document.getElementById("clipboard-error");
+        clipError.classList.add("hidden");
+        if (isNaN(val) || val < 5 || val > 300) return;
+        try {
+          const cfg = await invoke("load_config");
+          cfg.clipboard_clear_seconds = val;
+          await invoke("save_config", { cfg });
+          if (onClipboardClearSecondsChanged) onClipboardClearSecondsChanged(val);
+        } catch (e) {
+          clipError.textContent = typeof e === "string" ? e : "Failed to save";
+          clipError.classList.remove("hidden");
+        }
+      }, 400);
     });
 
     if (hasPin) {
@@ -172,6 +174,13 @@ export function openSettings(config) {
           pinError.textContent = typeof e === "string" ? e : "Failed to set PIN";
           pinError.classList.remove("hidden");
         }
+      });
+    }
+    // Clickable version link
+    const versionLink = document.getElementById("about-version-link");
+    if (versionLink) {
+      versionLink.addEventListener("click", () => {
+        window.open("https://github.com/kardelitaitu/oz-auth", "_blank");
       });
     }
   }).catch((e) => {
