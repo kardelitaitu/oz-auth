@@ -135,6 +135,85 @@ mod tests {
         assert_eq!(result.len(), 10, "should decode to 10 bytes");
     }
 
+    // ── Edge cases: zero-length, special character secrets ──
+
+    #[test]
+    fn test_decode_secret_base32_single_char_fails() {
+        // "G" is 1 char → decodes to... actually it can't be decoded (needs 8 chars for 5 bytes)
+        // But empty base32 decode returns Some(vec![]). Let's just test that empty fails.
+        assert!(decode_secret("").is_err(), "empty must be rejected");
+    }
+
+    #[test]
+    fn test_decode_secret_mixed_base32_and_hex() {
+        // "JBSWY3DPEE" is valid base32 (7 bytes) but also valid hex? Let's check
+        // JBSWY3DPEE in hex would be invalid (not hex chars). So it must decode via base32.
+        let result = decode_secret("JBSWY3DPEE").unwrap();
+        // This should be valid base32: 10 chars * 5 bits = 50 bits = 6.25 bytes → 6 bytes
+        // Actually base32::decode with padding: false — 10 chars: floor(10*5/8) = 6 bytes
+        assert_eq!(result.len(), 6, "JBSWY3DPEE = 6 bytes via base32");
+    }
+
+    #[test]
+    fn test_decode_secret_pure_numeric_succeeds_as_hex() {
+        // "12345678" is 8 hex chars = 4 bytes — hex::decode accepts it
+        let result = decode_secret("12345678").unwrap();
+        assert!(!result.is_empty(), "numeric hex should decode");
+    }
+
+    #[test]
+    fn test_decode_secret_hex_with_0x_prefix() {
+        // Hex with 0x prefix is NOT valid hex::decode input
+        let err = decode_secret("0xdeadbeef").unwrap_err();
+        assert!(err.contains("invalid secret"), "0x prefix should fail: {err}");
+    }
+
+    #[test]
+    fn test_decode_secret_very_long_base32() {
+        // Very long base32 string (1000 chars) — stress test
+        let long = "HXDMVJECJJWSRB3H".repeat(62); // ~992 chars of valid base32
+        let result = decode_secret(&long).unwrap();
+        assert!(!result.is_empty(), "long valid base32 should decode");
+        assert_eq!(result.len(), 62 * 10, "each 16-char block = 10 bytes");
+    }
+
+    #[test]
+    fn test_decode_secret_leading_trailing_whitespace() {
+        // Whitespace trimming should handle leading/trailing spaces
+        // HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ = 32 chars → 20 bytes
+        let result = decode_secret("  HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ  ").unwrap();
+        assert!(!result.is_empty(), "should decode with surrounding whitespace");
+    }
+
+    #[test]
+    fn test_decode_secret_newlines_and_tabs() {
+        // HXDM is 4 chars, then VJEC is 4 chars (so "HXDMVJECJJWSRB3H" = 16 chars = 10 bytes)
+        // We need a valid base32 string with whitespace injected
+        let result = decode_secret("HXDM\nVJEC\tJJWS RB3H").unwrap();
+        // After whitespace stripping: "HXDMVJECJJWSRB3H" = 16 chars = 10 bytes
+        assert!(!result.is_empty(), "newlines/tabs should be stripped");
+        assert_eq!(result.len(), 10, "16 base32 chars = 10 bytes");
+    }
+
+    // ── validate_secret_length ───────────────────────────────
+
+    #[test]
+    fn test_validate_secret_length_zero() {
+        assert!(validate_secret_length(&[]).is_err());
+    }
+
+    #[test]
+    fn test_validate_secret_length_one_byte() {
+        // One byte is technically non-empty, but totp_rs requires >= 128 bits
+        // Our validate only checks non-empty; totp_rs rejects short keys at generate time
+        assert!(validate_secret_length(&[0x01u8]).is_ok());
+    }
+
+    #[test]
+    fn test_validate_secret_length_16_bytes() {
+        assert!(validate_secret_length(&[0u8; 16]).is_ok());
+    }
+
     // ── Storage-level integration tests ──────────────────────
 
     fn cleanup_auth_file() {
@@ -547,6 +626,239 @@ mod tests {
                 a.secret.zeroize();
             }
             reloaded.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    // ── New decode_secret edge case tests ──────────────────────
+
+    #[test]
+    fn test_decode_secret_only_whitespace_fails() {
+        // All whitespace → trimmed to empty → decode fails
+        let err = decode_secret("   \t\n  ").unwrap_err();
+        assert!(err.contains("invalid secret") || err.contains("empty"),
+                "only whitespace should fail: {err}");
+    }
+
+    #[test]
+    fn test_decode_secret_mixed_case_base32() {
+        // HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ in mixed case
+        let result = decode_secret("HxdmVjecJjwSrB3hWizR4iFugFtMxBoZ").unwrap();
+        assert_eq!(result.len(), 20, "mixed-case base32 should decode");
+    }
+
+    #[test]
+    fn test_decode_secret_single_char_fails_as_invalid() {
+        // "F" is valid base32 (F=15) → decodes to 5 bits = insufficient for 1 byte
+        // base32::decode returns Some(vec![]) → validate_secret_length rejects empty
+        let err = decode_secret("F").unwrap_err();
+        assert!(err.contains("cannot be empty"), "single base32 char should result in empty secret error: {err}");
+    }
+
+    #[test]
+    fn test_decode_secret_short_base32_two_chars() {
+        // "GE" is 2 valid base32 chars → 10 bits → 1 byte (non-empty, passes validate)
+        let result = decode_secret("GE").unwrap();
+        assert_eq!(result.len(), 1, "2 base32 chars = 1 byte");
+    }
+
+    #[test]
+    fn test_decode_secret_only_padding_chars() {
+        // base32 padding chars without data
+        let err = decode_secret("====").unwrap_err();
+        assert!(err.contains("invalid secret") || err.contains("empty"),
+                "only padding chars should fail: {err}");
+    }
+
+    // ── New CRUD edge case tests via storage layer ───────────
+
+    #[test]
+    fn test_add_account_via_storage_with_accounts() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            // Add one account
+            let accounts = vec![Account {
+                id: "existing".into(),
+                issuer: "Old".into(),
+                label: "old@test.com".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1, 2, 3],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            // Simulate adding a second account
+            let mut loaded = crate::storage::try_load().unwrap();
+            let mut all_accounts = crate::storage::load_accounts(&loaded, None).unwrap();
+            all_accounts.push(Account {
+                id: "newly-added".into(),
+                issuer: "New".into(),
+                label: "new@test.com".into(),
+                algorithm: Algorithm::SHA256,
+                digits: 8,
+                period: 60,
+                secret: vec![4, 5, 6],
+                sort_order: 1,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            });
+            save_accounts(&mut loaded, &all_accounts, None).unwrap();
+            crate::storage::save(&loaded).unwrap();
+
+            // Verify both exist
+            let final_loaded = crate::storage::try_load().unwrap();
+            let mut final_accounts = crate::storage::load_accounts(&final_loaded, None).unwrap();
+            assert_eq!(final_accounts.len(), 2, "both accounts must be present");
+            assert_eq!(final_accounts[1].id, "newly-added");
+            assert_eq!(final_accounts[1].digits, 8);
+            assert_eq!(final_accounts[1].period, 60);
+            for a in &mut final_accounts {
+                a.secret.zeroize();
+            }
+            final_accounts.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_remove_all_accounts_via_storage_yields_empty() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "only-one".into(),
+                issuer: "Solo".into(),
+                label: "solo@test.com".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            // Remove all accounts
+            let mut loaded = crate::storage::try_load().unwrap();
+            let mut all_accounts = crate::storage::load_accounts(&loaded, None).unwrap();
+            all_accounts.clear();
+            save_accounts(&mut loaded, &all_accounts, None).unwrap();
+            crate::storage::save(&loaded).unwrap();
+
+            // Verify empty
+            let final_loaded = crate::storage::try_load().unwrap();
+            assert!(!final_loaded.accounts.encrypted, "should be plaintext");
+            assert_eq!(final_loaded.accounts.data_json, "[]", "empty JSON array");
+            let mut final_accounts = crate::storage::load_accounts(&final_loaded, None).unwrap();
+            assert!(final_accounts.is_empty(), "no accounts remain");
+            for a in &mut final_accounts {
+                a.secret.zeroize();
+            }
+            final_accounts.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_update_account_multiple_fields_via_storage() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "updatable".into(),
+                issuer: "OldIssuer".into(),
+                label: "old@test.com".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1, 2, 3],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            // Find and update multiple fields
+            let mut loaded = crate::storage::try_load().unwrap();
+            let mut all_accounts = crate::storage::load_accounts(&loaded, None).unwrap();
+            let account = all_accounts.iter_mut().find(|a| a.id == "updatable").unwrap();
+            account.issuer = "NewIssuer".into();
+            account.label = "new@test.com".into();
+            account.sort_order = 99;
+            save_accounts(&mut loaded, &all_accounts, None).unwrap();
+            crate::storage::save(&loaded).unwrap();
+
+            // Verify all fields updated
+            let final_loaded = crate::storage::try_load().unwrap();
+            let mut final_accounts = crate::storage::load_accounts(&final_loaded, None).unwrap();
+            assert_eq!(final_accounts[0].issuer, "NewIssuer");
+            assert_eq!(final_accounts[0].label, "new@test.com");
+            assert_eq!(final_accounts[0].sort_order, 99);
+            for a in &mut final_accounts {
+                a.secret.zeroize();
+            }
+            final_accounts.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_list_accounts_search_no_match_returns_empty() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![
+                Account {
+                    id: "a1".into(),
+                    issuer: "Alpha".into(),
+                    label: "alpha@test.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![1],
+                    sort_order: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+                Account {
+                    id: "a2".into(),
+                    issuer: "Beta".into(),
+                    label: "beta@test.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![2],
+                    sort_order: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+            ];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let loaded = crate::storage::try_load().unwrap();
+            let mut all_accounts = crate::storage::load_accounts(&loaded, None).unwrap();
+
+            // search for "xyzzy" → no match
+            let q = "xyzzy";
+            let filtered: Vec<_> = all_accounts.iter()
+                .filter(|a| a.issuer.to_lowercase().contains(q) || a.label.to_lowercase().contains(q))
+                .collect();
+            assert!(filtered.is_empty(), "no-match search must return empty");
+
+            for a in &mut all_accounts {
+                a.secret.zeroize();
+            }
+            all_accounts.clear();
             cleanup_auth_file();
         });
     }

@@ -468,4 +468,194 @@ mod tests {
         }
         decrypted.clear();
     }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_decrypt_accounts_missing_nonce_hex_fails() {
+        let payload = AccountsPayload {
+            encrypted: true,
+            nonce_hex: None,
+            ciphertext_hex: Some("aabb".into()),
+            data_json: String::new(),
+        };
+        let key = [0xAAu8; 32];
+        assert!(
+            decrypt_accounts(&payload, &key).is_err(),
+            "missing nonce must fail"
+        );
+    }
+
+    #[test]
+    fn test_decrypt_accounts_missing_ciphertext_hex_fails() {
+        let payload = AccountsPayload {
+            encrypted: true,
+            nonce_hex: Some("aabb".into()),
+            ciphertext_hex: None,
+            data_json: String::new(),
+        };
+        let key = [0xAAu8; 32];
+        assert!(
+            decrypt_accounts(&payload, &key).is_err(),
+            "missing ciphertext must fail"
+        );
+    }
+
+    #[test]
+    fn test_decrypt_accounts_invalid_nonce_hex_fails() {
+        let payload = AccountsPayload {
+            encrypted: true,
+            nonce_hex: Some("not-hex!!".into()),
+            ciphertext_hex: Some("aabbcc".into()),
+            data_json: String::new(),
+        };
+        let key = [0xAAu8; 32];
+        assert!(
+            decrypt_accounts(&payload, &key).is_err(),
+            "invalid nonce hex must fail"
+        );
+    }
+
+    #[test]
+    fn test_reconcile_invariants_empty_data_json_fixed() {
+        let mut data = fresh();
+        data.accounts.encrypted = false;
+        data.accounts.data_json = String::new(); // empty string, not "[]"
+        assert!(reconcile_invariants(&mut data), "empty data_json should be fixed");
+        assert_eq!(data.accounts.data_json, "[]", "should be normalized to []");
+    }
+
+    #[test]
+    fn test_load_accounts_encrypted_payload_nonce_short() {
+        // Payload marked encrypted but with garbage hex values
+        let payload = AccountsPayload {
+            encrypted: true,
+            nonce_hex: Some("00".into()),  // 1 byte, not 12
+            ciphertext_hex: Some("aabbcc".into()),
+            data_json: String::new(),
+        };
+        let key = [0xAAu8; 32];
+        // Will fail at hex decode stage — nonce_hex decodes to 1 byte
+        let result = decrypt_accounts(&payload, &key);
+        assert!(
+            result.is_err(),
+            "short nonce should be detected and fail"
+        );
+    }
+
+    #[test]
+    fn test_encrypt_accounts_empty_list_produces_valid_payload() {
+        let key = [0x42u8; 32];
+        let payload = encrypt_accounts(&[], &key).unwrap();
+        assert!(payload.encrypted);
+        assert!(payload.nonce_hex.is_some());
+        assert!(payload.ciphertext_hex.is_some());
+        // Decrypt back — should be empty JSON array
+        let mut decrypted = decrypt_accounts(&payload, &key).unwrap();
+        assert!(decrypted.is_empty(), "encrypted empty list → empty decrypted");
+        decrypted.clear();
+    }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_fresh_returns_valid_data() {
+        // fresh() always returns a valid AuthData regardless of disk state
+        let data = fresh();
+        assert_eq!(data.version, 1, "fresh data version must be 1");
+        assert!(!data.config.password_protected);
+        assert_eq!(data.accounts.data_json, "[]");
+    }
+
+    #[test]
+    fn test_save_then_load_roundtrip_empty_log() {
+        let mut data = fresh();
+        data.log = String::new();
+        let json = serde_json::to_string_pretty(&data).unwrap();
+        let restored: AuthData = serde_json::from_str(&json).unwrap();
+        assert!(restored.log.is_empty(), "fresh log should be empty");
+        assert_eq!(restored.version, 1);
+    }
+
+    #[test]
+    fn test_reconcile_both_invariants_at_once() {
+        // encrypted=true + password_protected=false + salt non-empty
+        // reconcile_invariants processes sequentially:
+        // 1. encrypted && !protected → set protected=true
+        // 2. After step 1, protected=true, so salt clear condition (!protected && salt) is NOT met
+        let mut data = fresh();
+        data.accounts.encrypted = true;
+        data.config.password_protected = false;
+        data.config.password_salt = "should-remain".into();
+        assert!(reconcile_invariants(&mut data), "should trigger encrypted→protected fix");
+        assert!(data.config.password_protected, "should become protected");
+        // Salt is NOT cleared because password_protected is now true after step 1
+        assert_eq!(data.config.password_salt, "should-remain",
+            "salt NOT cleared because password_protected was set to true in step 1");
+    }
+
+    #[test]
+    fn test_decrypt_accounts_encrypted_with_invalid_ciphertext_hex_fails() {
+        let payload = AccountsPayload {
+            encrypted: true,
+            nonce_hex: Some("0102030405060708090a0b0c".into()),  // 12 bytes
+            ciphertext_hex: Some("not-hex!!".into()),
+            data_json: String::new(),
+        };
+        let key = [0xAAu8; 32];
+        assert!(
+            decrypt_accounts(&payload, &key).is_err(),
+            "invalid ciphertext hex must fail"
+        );
+    }
+
+    #[test]
+    fn test_load_accounts_encrypted_with_wrong_key_reports_error() {
+        let key = [0x11u8; 32];
+        let wrong_key = [0x22u8; 32];
+        let accounts = vec![test_account()];
+        let payload = encrypt_accounts(&accounts, &key).unwrap();
+        let data = AuthData {
+            version: 1,
+            config: crate::config::Config::default(),
+            accounts: payload,
+            log: String::new(),
+        };
+        let result = load_accounts(&data, Some(wrong_key));
+        assert!(result.is_err(), "wrong key must fail decryption");
+    }
+
+    #[test]
+    fn test_encrypt_accounts_preserves_all_fields_in_accounts() {
+        // Verify that account fields survive encrypt→decrypt roundtrip
+        let key = [0x33u8; 32];
+        let now = chrono::Utc::now();
+        let mut account = test_account();
+        account.id = "fields-test".into();
+        account.issuer = "Multi-Field".into();
+        account.label = "multi@test.com".into();
+        account.algorithm = crate::models::account::Algorithm::SHA512;
+        account.digits = 8;
+        account.period = 90;
+        account.secret = vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE];
+        account.sort_order = 42;
+        account.created_at = now;
+        account.updated_at = now;
+
+        let payload = encrypt_accounts(&[account], &key).unwrap();
+        let mut decrypted = decrypt_accounts(&payload, &key).unwrap();
+        assert_eq!(decrypted.len(), 1);
+        assert_eq!(decrypted[0].id, "fields-test");
+        assert_eq!(decrypted[0].issuer, "Multi-Field");
+        assert_eq!(decrypted[0].label, "multi@test.com");
+        assert!(matches!(decrypted[0].algorithm, crate::models::account::Algorithm::SHA512));
+        assert_eq!(decrypted[0].digits, 8);
+        assert_eq!(decrypted[0].period, 90);
+        assert_eq!(decrypted[0].secret, vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE]);
+        assert_eq!(decrypted[0].sort_order, 42);
+        for a in &mut decrypted {
+            a.secret.zeroize();
+        }
+        decrypted.clear();
+    }
 }

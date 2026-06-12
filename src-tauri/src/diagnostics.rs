@@ -112,4 +112,106 @@ mod tests {
         assert!(log.contains("old event"));
         assert!(log.contains("new event"));
     }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_flush_to_log_str_empty_when_no_events() {
+        let _ = flush_to_log_str();
+        let log = flush_to_log_str();
+        assert!(log.is_empty(), "no events → empty log");
+    }
+
+    #[test]
+    fn test_flush_after_no_events_returns_empty() {
+        let _ = flush_to_log_str();
+        // Flush twice should give empty
+        let _ = flush_to_log_str();
+        let log = flush_to_log_str();
+        assert!(log.is_empty());
+    }
+
+    #[test]
+    fn test_restore_empty_string_noop() {
+        let _ = flush_to_log_str();
+        restore_from_log_str("");
+        event("test", "event");
+        let log = flush_to_log_str();
+        assert!(!log.contains("restored"));
+        assert!(log.contains("event"));
+    }
+
+    #[test]
+    fn test_log_trimming_at_limit() {
+        let _ = flush_to_log_str();
+        // Generate more than 10k bytes of events
+        for i in 0..500 {
+            event("bulk", &format!("event number {i}"));
+        }
+        let log = flush_to_log_str();
+        // Should be trimmed to ~9k bytes with "[log trimmed]" prefix
+        if log.len() > 10_000 {
+            panic!("log exceeds 10k limit: {} bytes", log.len());
+        }
+    }
+
+    #[test]
+    fn test_multiple_events_preserve_order() {
+        // Flush any events left over from previous tests (e.g. crash hooks)
+        let _ = flush_to_log_str();
+        // Flush again to ensure buffer is empty
+        let _ = flush_to_log_str();
+        event("first", "event A");
+        event("second", "event B");
+        event("third", "event C");
+        let log = flush_to_log_str();
+        let lines: Vec<&str> = log.lines().collect();
+        assert!(lines.len() >= 3, "should have at least 3 lines, got {}", lines.len());
+        assert!(lines[0].contains("first"), "first line: {:?}", lines[0]);
+        assert!(lines[1].contains("second"), "second line: {:?}", lines[1]);
+        assert!(lines[2].contains("third"), "third line: {:?}", lines[2]);
+    }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_multiple_flushes_return_empty() {
+        let _ = flush_to_log_str();
+        let _ = flush_to_log_str();
+        let _ = flush_to_log_str();
+        let log = flush_to_log_str();
+        assert!(log.is_empty(), "multiple flushes should all return empty after first");
+    }
+
+    #[test]
+    fn test_event_with_empty_category() {
+        let _ = flush_to_log_str();
+        // Empty category should still produce a line
+        event("", "some message");
+        let log = flush_to_log_str();
+        assert!(!log.is_empty(), "empty category should still log");
+        assert!(log.contains(": some message"), "should contain message: {log}");
+    }
+
+    #[test]
+    fn test_event_with_empty_message() {
+        let _ = flush_to_log_str();
+        event("cat", "");
+        let log = flush_to_log_str();
+        assert!(log.contains("cat:"), "should contain category even with empty message");
+    }
+
+    #[test]
+    fn test_restore_from_log_str_with_newlines() {
+        let _ = flush_to_log_str();
+        // Restore multi-line log
+        let saved = "[100] first: line1\n[101] second: line2\n[102] third: line3";
+        restore_from_log_str(saved);
+        event("curr", "new");
+        let log = flush_to_log_str();
+        assert!(log.contains("line1"));
+        assert!(log.contains("line2"));
+        assert!(log.contains("line3"));
+        assert!(log.contains("new"));
+    }
 }

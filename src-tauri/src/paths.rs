@@ -51,4 +51,46 @@ mod tests {
         let path = auth_path();
         assert!(path.to_string_lossy().ends_with(".auth"));
     }
+
+    #[test]
+    fn test_exe_dir_returns_path() {
+        let dir = exe_dir();
+        assert!(dir.is_absolute(), "exe_dir must be an absolute path");
+    }
+
+    #[test]
+    fn test_auth_path_matches_exe_stem() {
+        let stem = exe_stem();
+        let auth = auth_path();
+        let auth_stem = auth.file_stem().unwrap().to_string_lossy().to_string();
+        assert_eq!(auth_stem, stem, "auth file stem must match exe stem");
+    }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_exe_stem_no_path_separator() {
+        let stem = exe_stem();
+        assert!(
+            !stem.contains('/') && !stem.contains('\\'),
+            "exe_stem must not contain path separators: {stem}"
+        );
+    }
+
+    #[test]
+    fn test_auth_path_parent_is_exe_dir() {
+        let auth = auth_path();
+        let parent = auth.parent().unwrap();
+        assert_eq!(
+            parent,
+            &exe_dir(),
+            "auth file parent must equal exe dir"
+        );
+    }
+
+    #[test]
+    fn test_verify_returns_ok() {
+        let result = verify();
+        assert!(result.is_ok(), "verify() should return Ok");
+    }
 }

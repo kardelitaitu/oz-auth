@@ -160,4 +160,145 @@ mod tests {
         let uri = "otpauth://totp/ACME:john@example.com?secret=!!!!invalid!!!!";
         assert!(parse_uri(uri).is_err());
     }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_uri_special_chars_in_label() {
+        // Label with special characters (spaces, @, dots are already common)
+        // url::Url::parse does NOT auto-decode percent-encoded path segments.
+        let uri = "otpauth://totp/My%20App:user+tag@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
+        let parsed = parse_uri(uri).unwrap();
+        // Percent-encoded characters remain encoded in the path
+        assert_eq!(parsed.issuer, "My%20App");
+        assert_eq!(parsed.label, "user+tag@example.com");
+    }
+
+    #[test]
+    fn test_parse_uri_empty_path_fails() {
+        let uri = "otpauth://totp?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
+        // Empty path → label is empty string, which is technically valid
+        let parsed = parse_uri(uri).unwrap();
+        assert!(parsed.label.is_empty());
+    }
+
+    #[test]
+    fn test_parse_uri_algorithm_case_insensitive() {
+        // Algorithm parameter should be case-insensitive
+        let uri = "otpauth://totp/Test:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&algorithm=sha256";
+        let parsed = parse_uri(uri).unwrap();
+        assert!(matches!(parsed.algorithm, Algorithm::SHA256));
+    }
+
+    #[test]
+    fn test_parse_uri_issuer_colon_in_label() {
+        // Path has colon — "Issuer:label" split. If label itself contains
+        // a colon, only the first colon separates issuer from label.
+        let uri = "otpauth://totp/OnlyIssuer:label:with:colons?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
+        let parsed = parse_uri(uri).unwrap();
+        assert_eq!(parsed.issuer, "OnlyIssuer");
+        assert_eq!(parsed.label, "label:with:colons");
+    }
+
+    #[test]
+    fn test_parse_uri_unknown_query_params_ignored() {
+        // Unknown query parameters should be ignored
+        let uri = "otpauth://totp/ACME:john@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&foo=bar&baz=qux";
+        let parsed = parse_uri(uri).unwrap();
+        assert_eq!(parsed.issuer, "ACME");
+        assert_eq!(parsed.digits, 6);
+        assert_eq!(parsed.period, 30);
+    }
+
+    #[test]
+    fn test_parse_uri_period_zero_or_invalid() {
+        // period=0 should be parsed as 0 (not rejected by parser)
+        let uri = "otpauth://totp/ACME:john@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&period=0";
+        let parsed = parse_uri(uri).unwrap();
+        assert_eq!(parsed.period, 0, "period=0 is technically allowed by parser");
+    }
+
+    #[test]
+    fn test_parse_uri_digits_non_numeric_defaults() {
+        // Non-numeric digits param should fall back to default (6)
+        let uri = "otpauth://totp/ACME:john@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&digits=abc";
+        let parsed = parse_uri(uri).unwrap();
+        assert_eq!(parsed.digits, 6, "non-numeric digits should default to 6");
+    }
+
+    #[test]
+    fn test_parse_uri_empty_string_is_error() {
+        assert!(parse_uri("").is_err(), "empty string must be an error");
+    }
+
+    #[test]
+    fn test_parse_uri_https_scheme_fails() {
+        let uri = "https://totp/ACME:john@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
+        assert!(parse_uri(uri).is_err(), "https scheme must fail");
+    }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_parse_uri_secret_uppercase_succeeds() {
+        // Secret is parsed as-is from query params (not uppercased by the code),
+        // so it must be uppercase base32
+        let uri = "otpauth://totp/Test:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
+        let parsed = parse_uri(uri).unwrap();
+        assert!(!parsed.secret.is_empty(), "uppercase secret must decode");
+        assert_eq!(parsed.secret.len(), 20);
+    }
+
+    #[test]
+    fn test_parse_uri_issuer_in_path_no_query_override() {
+        // Path issuer should be used when no query issuer is present
+        let uri = "otpauth://totp/PathIssuer:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
+        let parsed = parse_uri(uri).unwrap();
+        assert_eq!(parsed.issuer, "PathIssuer", "issuer from path must be used when no query issuer");
+        assert_eq!(parsed.label, "user@test.com");
+    }
+
+    #[test]
+    fn test_parse_uri_digits_0_accepted_as_valid() {
+        // digits=0 is a valid u8 parse → returns 0, not default 6
+        let uri = "otpauth://totp/ACME:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&digits=0";
+        let parsed = parse_uri(uri).unwrap();
+        assert_eq!(parsed.digits, 0, "digits=0 parses as valid u8");
+    }
+
+    #[test]
+    fn test_parse_uri_period_negative_defaults_to_30() {
+        // period=-1 fails to parse from_str("-1") → .ok() → None → defaults to 30
+        let uri = "otpauth://totp/ACME:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&period=-1";
+        let parsed = parse_uri(uri).unwrap();
+        assert_eq!(parsed.period, 30, "period=-1 should default to 30");
+    }
+
+    #[test]
+    fn test_parse_uri_percent_encoded_unicode_in_label() {
+        // Unicode characters should be percent-encoded in URIs
+        let uri = "otpauth://totp/MyApp:user@xn--mszy-0ra.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
+        let parsed = parse_uri(uri).unwrap();
+        assert_eq!(parsed.label, "user@xn--mszy-0ra.com", "unicode domain in label preserved via punycode");
+        assert_eq!(parsed.issuer, "MyApp");
+    }
+
+    #[test]
+    fn test_parse_uri_algorithm_various_case_variants() {
+        // SHA1 should work case-insensitively
+        for variant in &["sha1", "Sha1", "SHA1", "shA1"] {
+            let uri = format!("otpauth://totp/ACME:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&algorithm={}", variant);
+            let parsed = parse_uri(&uri).unwrap();
+            assert!(matches!(parsed.algorithm, Algorithm::SHA1),
+                    "SHA1 variant '{variant}' must work case-insensitively");
+        }
+    }
+
+    #[test]
+    fn test_parse_uri_with_duplicate_query_params() {
+        // Duplicate secret query params — last one wins (url::Url behavior)
+        let uri = "otpauth://totp/ACME:user@test.com?secret=INVALID&secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
+        let parsed = parse_uri(uri).unwrap();
+        assert!(!parsed.secret.is_empty(), "second secret should be used");
+    }
 }

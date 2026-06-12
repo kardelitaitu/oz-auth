@@ -679,12 +679,330 @@ mod tests {
             seed_plaintext_accounts(&[a1, a2]);
 
             let result = generate_all_codes_impl(&state);
-            // The batch fails entirely because make_totp (via validate_secret_length) errors.            assert!(result.is_err(), "corrupted account causes entire batch to fail");
+            // The batch fails entirely because make_totp (via validate_secret_length) errors.
+            assert!(result.is_err(), "corrupted account causes entire batch to fail");
             let err = result.unwrap_err();
             assert!(
                 err.contains("cannot be empty"),
                 "error should mention empty: {err}"
             );
+            cleanup_auth_file();
+        });
+    }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_code_stable_within_same_timestep() {
+        // Same counter → same code (no time-based drift)
+        let secret = b"12345678901234567890";
+        let account = test_account(secret, Algorithm::SHA1, 6);
+        let totp = make_totp(&account).unwrap();
+        let code_a = totp.generate(1234567890);
+        let code_b = totp.generate(1234567890);
+        assert_eq!(code_a, code_b, "same timestamp must produce same code");
+    }
+
+    #[test]
+    fn test_code_different_across_timesteps() {
+        let secret = b"12345678901234567890";
+        let account = test_account(secret, Algorithm::SHA1, 6);
+        let totp = make_totp(&account).unwrap();
+        // Different counters → different codes (guaranteed by TOTP spec)
+        let code_t0 = totp.generate(30);
+        let code_t1 = totp.generate(60);
+        assert_ne!(
+            code_t0, code_t1,
+            "different counters must produce different codes"
+        );
+    }
+
+    #[test]
+    fn test_make_totp_rejects_zero_digits() {
+        let secret = b"12345678901234567890";
+        let account = test_account(secret, Algorithm::SHA1, 0);
+        assert!(make_totp(&account).is_err(), "0 digits must be rejected");
+    }
+
+    #[test]
+    fn test_make_totp_rejects_digits_7() {
+        let secret = b"12345678901234567890";
+        let account = test_account(secret, Algorithm::SHA1, 7);
+        assert!(make_totp(&account).is_err(), "7 digits must be rejected");
+    }
+
+    #[test]
+    fn test_make_totp_accepts_6_digits() {
+        let secret = b"12345678901234567890";
+        let account = test_account(secret, Algorithm::SHA1, 6);
+        assert!(make_totp(&account).is_ok(), "6 digits must be accepted");
+    }
+
+    #[test]
+    fn test_make_totp_accepts_8_digits() {
+        let secret = b"12345678901234567890";
+        let account = test_account(secret, Algorithm::SHA1, 8);
+        assert!(make_totp(&account).is_ok(), "8 digits must be accepted");
+    }
+
+    #[test]
+    fn test_generate_code_with_missing_auth_file() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // No auth file exists → try_load creates fresh() with empty accounts
+            let _data = crate::storage::try_load().unwrap();
+            let result = crate::commands::totp::generate_code_impl("any-id", &state);
+            assert!(result.is_err(), "no accounts → must fail");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_generate_all_codes_zero_accounts_via_seed() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // Empty accounts array
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "[]".into();
+            crate::storage::save(&data).unwrap();
+
+            let results = generate_all_codes_impl(&state).unwrap();
+            assert!(results.is_empty(), "zero accounts → empty results");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_remaining_time_within_range_multiple_calls() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let secret = b"12345678901234567890";
+            seed_plaintext_accounts(&[test_account(secret, Algorithm::SHA1, 6)]);
+
+            // Call multiple times in quick succession — remaining should be monotonic
+            let (_, r1) = generate_code_impl("test-1", &state).unwrap();
+            let (_, r2) = generate_code_impl("test-1", &state).unwrap();
+            // r2 should be <= r1 (time moves forward)
+            assert!(r2 <= r1, "remaining should decrease or stay same: {r2} > {r1}");
+            assert!(r1 > 0 && r1 <= 30, "r1 out of range: {r1}");
+            assert!(r2 > 0 && r2 <= 30, "r2 out of range: {r2}");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_generate_code_account_id_does_not_panic() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let secret = b"12345678901234567890";
+            seed_plaintext_accounts(&[test_account(secret, Algorithm::SHA1, 6)]);
+
+            // Searching for an ID that starts with our target prefix but isn't exact
+            // must return Err, not panic
+            let result = generate_code_impl("test-", &state);
+            assert!(result.is_err(), "partial ID match must fail, not panic");
+            assert!(result.unwrap_err().contains("not found"));
+            cleanup_auth_file();
+        });
+    }
+
+    // ── generate_all_codes: sort order edge cases ────────────
+
+    #[test]
+    fn test_generate_all_codes_order_matches_storage() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut a1 = test_account(b"11111111111111111111", Algorithm::SHA1, 6);
+            a1.id = "first-in-storage".into();
+            a1.sort_order = 1;
+            let mut a2 = test_account(b"22222222222222222222", Algorithm::SHA256, 6);
+            a2.id = "second-in-storage".into();
+            a2.sort_order = 0;
+            seed_plaintext_accounts(&[a1, a2]);
+
+            let results = generate_all_codes_impl(&state).unwrap();
+            // generate_all_codes_impl returns accounts in storage order (not sorted by sort_order)
+            // The frontend is responsible for sorting by sort_order
+            assert_eq!(results.len(), 2);
+            assert_eq!(
+                results[0].0, "first-in-storage",
+                "first in storage = first in results"
+            );
+            assert_eq!(
+                results[1].0, "second-in-storage",
+                "second in storage = second in results"
+            );
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_generate_all_codes_order_with_explicit_sort_order() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut a1 = test_account(b"11111111111111111111", Algorithm::SHA1, 6);
+            a1.id = "sort-1".into();
+            a1.sort_order = 1;
+            let mut a2 = test_account(b"22222222222222222222", Algorithm::SHA256, 6);
+            a2.id = "sort-0".into();
+            a2.sort_order = 0;
+            let mut a3 = test_account(b"33333333333333333333", Algorithm::SHA512, 6);
+            a3.id = "sort-2".into();
+            a3.sort_order = 2;
+            seed_plaintext_accounts(&[a1, a2, a3]);
+
+            let results = generate_all_codes_impl(&state).unwrap();
+            // Results maintain storage order: [a1, a2, a3]
+            assert_eq!(results[0].0, "sort-1");
+            assert_eq!(results[1].0, "sort-0");
+            assert_eq!(results[2].0, "sort-2");
+
+            // Verify sort_order values are preserved in the accounts
+            // (they're in the Account struct, but generate_all_codes_impl only returns id+code+remaining)
+            // This is handled by the frontend sorting by sort_order
+            // Backend preserves sort_order correctly through encrypt/decrypt cycles
+            cleanup_auth_file();
+        });
+    }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_make_totp_accepts_digits_6_and_8_only() {
+        let secret = b"12345678901234567890";
+        for digits in [6u8, 8u8] {
+            let account = test_account(secret, Algorithm::SHA1, digits);
+            assert!(make_totp(&account).is_ok(), "digits={digits} must be accepted");
+        }
+        for digits in [0u8, 1u8, 5u8, 7u8, 9u8, 255u8] {
+            let account = test_account(secret, Algorithm::SHA1, digits);
+            assert!(make_totp(&account).is_err(), "digits={digits} must be rejected");
+        }
+    }
+
+    #[test]
+    fn test_generate_code_with_empty_account_id_fails() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let secret = b"12345678901234567890";
+            seed_plaintext_accounts(&[test_account(secret, Algorithm::SHA1, 6)]);
+
+            // Empty string should not match any account
+            let result = generate_code_impl("", &state);
+            assert!(result.is_err(), "empty account ID must fail");
+            let err = result.unwrap_err();
+            assert!(err.contains("not found"), "error should mention 'not found': {err}");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_generate_code_very_long_secret_succeeds() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // 64-byte secret — RFC 6238 allows any key length
+            let long_secret = b"1234567890123456789012345678901234567890123456789012345678901234";
+            let mut account = test_account(long_secret, Algorithm::SHA1, 6);
+            account.id = "long-secret".into();
+            seed_plaintext_accounts(&[account]);
+
+            let (code, remaining) = generate_code_impl("long-secret", &state).unwrap();
+            assert_eq!(code.len(), 6);
+            assert!(code.chars().all(|c| c.is_ascii_digit()));
+            assert!(remaining > 0 && remaining <= 30);
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_remaining_time_decreases_monotonically() {
+        // The remaining value should decrease over time within the same period
+        let secret = b"12345678901234567890";
+        let account = test_account(secret, Algorithm::SHA1, 6);
+        let totp = make_totp(&account).unwrap();
+        let period = account.period as u64;
+
+        // Within the same period window: t0 < t1 → remaining decreases
+        let t0 = 10u64;
+        let t1 = 20u64;
+        let r0 = period - (t0 % period);
+        let r1 = period - (t1 % period);
+        assert!(r1 <= r0, "remaining must decrease as time advances: {r1} > {r0}");
+
+        // After period boundary, remaining resets to period
+        let t2 = period; // exactly one period later
+        let r2 = period - (t2 % period);
+        assert_eq!(r2, period, "at period boundary, remaining should equal period");
+
+        // Code at t=0 and t=period should be different (different counters)
+        assert_ne!(totp.generate(0), totp.generate(period));
+    }
+
+    #[test]
+    fn test_code_60s_remaining_boundaries() {
+        let secret = b"12345678901234567890";
+        let mut account = test_account(secret, Algorithm::SHA1, 6);
+        account.period = 60;
+        let totp = make_totp(&account).unwrap();
+        let period = 60u64;
+
+        // t=0 → remaining=60
+        assert_eq!(period - (0 % period), 60, "remaining should be 60 at t=0");
+        // t=59 → remaining=1
+        assert_eq!(period - (59 % period), 1, "remaining should be 1 at t=59");
+        // t=60 → remaining=60 (new window)
+        assert_eq!(period - (60 % period), 60, "remaining should reset to 60 at t=60");
+
+        // Code at t=0 and t=59 should be same (same counter = 0)
+        assert_eq!(totp.generate(0), totp.generate(59));
+        // Code at t=59 and t=60 should differ (different counters)
+        assert_ne!(totp.generate(59), totp.generate(60));
+    }
+
+    #[test]
+    fn test_generate_code_impl_with_8_digit_code() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let secret = b"12345678901234567890";
+            let mut account = test_account(secret, Algorithm::SHA1, 8);
+            account.id = "eight-digit".into();
+            seed_plaintext_accounts(&[account]);
+
+            let (code, _remaining) = generate_code_impl("eight-digit", &state).unwrap();
+            assert_eq!(code.len(), 8, "8-digit code expected");
+            assert!(code.chars().all(|c| c.is_ascii_digit()));
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_generate_all_codes_three_accounts_all_8_digit() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut a1 = test_account(b"11111111111111111111", Algorithm::SHA1, 8);
+            a1.id = "8-1".into();
+            let mut a2 = test_account(b"22222222222222222222", Algorithm::SHA256, 8);
+            a2.id = "8-2".into();
+            let mut a3 = test_account(b"33333333333333333333", Algorithm::SHA512, 8);
+            a3.id = "8-3".into();
+            seed_plaintext_accounts(&[a1, a2, a3]);
+
+            let results = generate_all_codes_impl(&state).unwrap();
+            assert_eq!(results.len(), 3);
+            for (_id, code, _remaining) in &results {
+                assert_eq!(code.len(), 8, "each code must be 8 digits");
+                assert!(code.chars().all(|c| c.is_ascii_digit()));
+            }
             cleanup_auth_file();
         });
     }

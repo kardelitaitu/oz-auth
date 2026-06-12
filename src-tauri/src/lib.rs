@@ -329,6 +329,44 @@ mod tests {
         );
     }
 
+    #[test]
+    fn test_get_app_name_returns_exe_stem() {
+        let name = get_app_name();
+        let stem = crate::paths::exe_stem();
+        assert_eq!(
+            name, stem,
+            "get_app_name must return the exe stem"
+        );
+    }
+
     // get_app_version takes tauri::AppHandle — cannot be called in unit tests.
     // It is compilation-verified via the invoke_handler registration in run().
+
+    #[test]
+    fn test_save_config_empty_auth_file_creates_fresh() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            // No auth file exists — saving config should create one with defaults
+            let cfg = crate::config::Config {
+                theme: "light".into(),
+                width: 500,
+                ..crate::config::Config::default()
+            };
+            // save_config calls try_load first. If no auth file, try_load returns fresh()
+            let mut data = crate::storage::try_load().unwrap();
+            data.config = cfg.clone();
+            // Preserve password metadata (save_config requirement)
+            data.config.password_protected = false;
+            data.config.password_salt = String::new();
+            crate::storage::save(&data).unwrap();
+
+            // Verify the file was created
+            assert!(crate::paths::auth_path().exists());
+            let loaded = crate::storage::try_load().unwrap();
+            assert_eq!(loaded.config.theme, "light");
+            assert_eq!(loaded.config.width, 500);
+            assert!(!loaded.config.password_protected);
+            cleanup_auth_file();
+        });
+    }
 }

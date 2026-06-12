@@ -186,4 +186,72 @@ mod tests {
         assert_eq!(bytes[127], 0); // (31,0)
         assert_eq!(bytes[3971], 0); // (0,31)
     }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_generate_pie_icon_zero_percent() {
+        let img = generate_pie_icon(0.0).unwrap();
+        assert_eq!(img.width(), 32);
+        assert_eq!(img.height(), 32);
+        // At 0%, no pixels should be in the "fill" slice
+        let bytes = img.rgba();
+        // Center pixel should be background (dark), not fill (blue)
+        // Center is at (16, 16) → idx = (16*32+16)*4 = 2112
+        let idx = (16 * 32 + 16) * 4;
+        assert!(bytes[idx + 3] > 0, "center should be visible");
+    }
+
+    #[test]
+    fn test_generate_pie_icon_half() {
+        let img = generate_pie_icon(50.0).unwrap();
+        assert_eq!(img.rgba().len(), 4096);
+    }
+
+    #[test]
+    fn test_generate_pie_icon_quarter() {
+        let img = generate_pie_icon(25.0).unwrap();
+        assert_eq!(img.rgba().len(), 4096);
+    }
+
+    #[test]
+    fn test_generate_pie_icon_three_quarters() {
+        let img = generate_pie_icon(75.0).unwrap();
+        assert_eq!(img.rgba().len(), 4096);
+    }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_generate_pie_icon_negative_pct_clamps() {
+        // Negative percentage should behave like 0%
+        let img = generate_pie_icon(-50.0).unwrap();
+        assert_eq!(img.width(), 32);
+        assert_eq!(img.height(), 32);
+        assert_eq!(img.rgba().len(), 4096);
+        // No crash
+    }
+
+    #[test]
+    fn test_generate_pie_icon_over_100_pct() {
+        // >100% should behave like full circle (100%)
+        let img = generate_pie_icon(150.0).unwrap();
+        assert_eq!(img.width(), 32);
+        assert_eq!(img.height(), 32);
+        assert_eq!(img.rgba().len(), 4096);
+        // No crash — 150% creates angle > 1.5× TAU, which is fine for atan2
+    }
+
+    #[test]
+    fn test_generate_pie_icon_exactly_100_pct_full_circle() {
+        // At exactly 100%, the entire circle should be filled
+        let img = generate_pie_icon(100.0).unwrap();
+        let bytes = img.rgba();
+        // Many pixels should be visible (non-transparent)
+        let visible_count = bytes.chunks(4).filter(|p| p[3] > 0).count();
+        assert!(
+            visible_count > 500,
+            "at 100% most circle pixels should be visible: {visible_count}"
+        );
+    }
 }

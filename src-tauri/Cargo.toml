@@ -29,3 +29,6 @@ hex = "0.4"
 rand = "0.8"
 zeroize = { version = "1.8.2", features = ["derive"] }
 libc = "0.2"
+
+[dev-dependencies]
+proptest = "1"

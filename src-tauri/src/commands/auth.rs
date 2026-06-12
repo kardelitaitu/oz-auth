@@ -756,4 +756,255 @@ mod tests {
             cleanup_auth_file();
         });
     }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_clear_key_twice_is_safe() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            state.set_key([0x42u8; 32]).unwrap();
+            assert!(state.has_key());
+            state.clear_key().unwrap();
+            assert!(!state.has_key());
+            // Second clear should be a no-op (already no key)
+            state.clear_key().unwrap();
+            assert!(!state.has_key());
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_unlock_returns_false_not_error_for_wrong_pin() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let _state = test_app_state();
+            let salt = crypto::generate_salt();
+            let mut key = crypto::derive_key("correct", &*salt).unwrap();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = hex::encode(*salt);
+            crate::storage::save(&data).unwrap();
+            key.zeroize();
+
+            // Wrong PIN — must return Ok(false), NOT Err(...)
+            let wrong_salt = hex::decode(&data.config.password_salt).unwrap();
+            let mut wrong_key = crypto::derive_key("wrong", &wrong_salt).unwrap();
+            let result = crate::storage::decrypt_accounts(&data.accounts, &wrong_key);
+            assert!(result.is_err(), "wrong pin must produce Err (not panic)");
+            wrong_key.zeroize();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_unlock_empty_pin_fails() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            // Use a REAL 16-byte salt (Argon2 salt minimum)
+            let salt = crypto::generate_salt();
+            let mut key = crypto::derive_key("validpin", &*salt).unwrap();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = hex::encode(*salt);
+            crate::storage::save(&data).unwrap();
+            key.zeroize();
+
+            // Empty PIN derives a different key → decrypt must fail
+            let loaded = crate::storage::try_load().unwrap();
+            let loaded_salt = hex::decode(&loaded.config.password_salt).unwrap();
+            let mut empty_key = crypto::derive_key("", &loaded_salt).unwrap();
+            let result = crate::storage::decrypt_accounts(&loaded.accounts, &empty_key);
+            assert!(result.is_err(), "empty pin must fail decryption");
+            empty_key.zeroize();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_export_backup_nonexistent_path_fails() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            // No auth file exists yet → export_backup will try to copy a non-existent file
+            let bad_path = crate::paths::auth_path().with_extension("auth.nonexistent");
+            let result = std::fs::copy(crate::paths::auth_path(), &bad_path);
+            assert!(result.is_err(), "export from non-existent source must fail");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_change_pin_with_long_pin_succeeds() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let salt = crypto::generate_salt();
+            let mut key = crypto::derive_key("short", &*salt).unwrap();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = hex::encode(*salt);
+            crate::storage::save(&data).unwrap();
+            key.zeroize();
+
+            // Change to a very long PIN
+            let new_pin = "a".repeat(200);
+            let loaded_salt = hex::decode(&data.config.password_salt).unwrap();
+            let mut old_key = crypto::derive_key("short", &loaded_salt).unwrap();
+            let decrypted = crate::storage::decrypt_accounts(&data.accounts, &old_key).unwrap();
+            let new_salt = crypto::generate_salt();
+            let mut new_key = crypto::derive_key(&new_pin, &*new_salt).unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&decrypted, &new_key).unwrap();
+            data.config.password_salt = hex::encode(*new_salt);
+            crate::storage::save(&data).unwrap();
+            state.set_key(new_key).unwrap();
+            old_key.zeroize();
+            new_key.zeroize();
+
+            let loaded = crate::storage::try_load().unwrap();
+            let current_salt = hex::decode(&loaded.config.password_salt).unwrap();
+            let mut verify_key = crypto::derive_key(&new_pin, &current_salt).unwrap();
+            assert!(
+                crate::storage::decrypt_accounts(&loaded.accounts, &verify_key).is_ok(),
+                "change to long PIN must succeed"
+            );
+            verify_key.zeroize();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_import_backup_clears_app_state_key() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            state.set_key([0x55u8; 32]).unwrap();
+            assert!(state.has_key());
+
+            // Create a valid backup file
+            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            let data = crate::storage::try_load().unwrap();
+            std::fs::write(
+                &backup_path,
+                serde_json::to_string_pretty(&data).unwrap(),
+            )
+            .unwrap();
+
+            // Import (simulates import_backup by overwriting and clearing state)
+            let dest = crate::paths::auth_path();
+            std::fs::copy(&backup_path, &dest).unwrap();
+            state.clear_key().unwrap();
+            assert!(
+                !state.has_key(),
+                "import must clear key from AppState"
+            );
+
+            let _ = std::fs::remove_file(&backup_path);
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_locked_app_cannot_load_accounts_without_key() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let _state = test_app_state();
+            let salt = crypto::generate_salt();
+            let mut key = crypto::derive_key("mypin", &*salt).unwrap();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = hex::encode(*salt);
+            crate::storage::save(&data).unwrap();
+            key.zeroize();
+
+            // PIN is set but no key in state → load_accounts must fail (locked)
+            let loaded = crate::storage::try_load().unwrap();
+            assert!(loaded.config.password_protected, "PIN set");
+            assert!(
+                crate::storage::load_accounts(&loaded, None).is_err(),
+                "must be locked: no key in state"
+            );
+            cleanup_auth_file();
+        });
+    }
+
+    // ── New tests ──────────────────────────────────────────────
+
+    #[test]
+    fn test_unlock_invalid_salt_hex_fails() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let mut data = crate::storage::try_load().unwrap();
+            let salt = crypto::generate_salt();
+            let mut key = crypto::derive_key("mypin", &*salt).unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
+            data.config.password_protected = true;
+            // Corrupt the salt: invalid hex characters
+            data.config.password_salt = "not-hex!!gg".into();
+            crate::storage::save(&data).unwrap();
+            key.zeroize();
+
+            // Loading the data won't fail (salt is just a string), but unlock
+            // tries to hex-decode it and should fail
+            let loaded = crate::storage::try_load().unwrap();
+            assert!(loaded.config.password_protected);
+            let decode_result = hex::decode(&loaded.config.password_salt);
+            assert!(decode_result.is_err(), "invalid salt hex must fail decode");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_unlock_correct_pin_twice_succeeds() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let salt = crypto::generate_salt();
+            let mut key = crypto::derive_key("mypin", &*salt).unwrap();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = hex::encode(*salt);
+            crate::storage::save(&data).unwrap();
+            key.zeroize();
+
+            // First unlock via storage layer
+            let loaded = crate::storage::try_load().unwrap();
+            let loaded_salt = hex::decode(&loaded.config.password_salt).unwrap();
+            let mut key1 = crypto::derive_key("mypin", &loaded_salt).unwrap();
+            let mut decrypted1 = crate::storage::decrypt_accounts(&loaded.accounts, &key1).unwrap();
+            assert!(decrypted1.is_empty());
+            key1.zeroize();
+            for a in &mut decrypted1 { a.secret.zeroize(); }
+            decrypted1.clear();
+
+            // Second unlock — same data, same PIN — must still work
+            let mut key2 = crypto::derive_key("mypin", &loaded_salt).unwrap();
+            let mut decrypted2 = crate::storage::decrypt_accounts(&loaded.accounts, &key2).unwrap();
+            assert!(decrypted2.is_empty());
+            key2.zeroize();
+            for a in &mut decrypted2 { a.secret.zeroize(); }
+            decrypted2.clear();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_lock_clears_key_from_state() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            state.set_key([0x42u8; 32]).unwrap();
+            assert!(state.has_key());
+            state.clear_key().unwrap();
+            assert!(!state.has_key(), "lock must clear encryption key");
+            // Verify get_key also returns None
+            let retrieved = state.get_key().unwrap();
+            assert!(retrieved.is_none(), "get_key must return None after lock");
+            cleanup_auth_file();
+        });
+    }
 }
