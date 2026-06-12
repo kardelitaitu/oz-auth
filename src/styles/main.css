@@ -171,12 +171,20 @@ body.theme-dark, body:not(.theme-light) {
   color: var(--btn-hover-text);
 }
 
-#btn-settings:hover svg {
-  animation: shake 0.6s ease-in-out infinite;
+/* Standard hover animation for all toolbar icons: wiggle + bounce */
+#btn-settings:hover svg,
+#btn-theme:hover svg,
+#btn-add:hover svg {
+  animation: wiggle-bounce 0.8s ease-in-out infinite;
 }
 
-#btn-theme:hover svg {
-  animation: pulse 0.4s ease-in-out infinite;
+@keyframes wiggle-bounce {
+  0%   { transform: rotate(0deg) scale(1); }
+  15%  { transform: rotate(-15deg) scale(1.1); }
+  30%  { transform: rotate(15deg) scale(1.15); }
+  45%  { transform: rotate(-8deg) scale(1.05); }
+  62.5% { transform: rotate(0deg) scale(1); }
+  100% { transform: rotate(0deg) scale(1); }
 }
 
 /* Sun/moon icon toggle based on theme */
@@ -192,44 +200,7 @@ body.theme-dark, body:not(.theme-light) {
   display: block;
 }
 
-#btn-add:hover svg {
-  animation: bounce 0.8s ease-in-out infinite;
-}
 
-@keyframes shake {
-  0%, 100% { transform: rotate(0deg); }
-  20% { transform: rotate(-15deg); }
-  40% { transform: rotate(15deg); }
-  60% { transform: rotate(-10deg); }
-  80% { transform: rotate(10deg); }
-}
-
-@keyframes pulse {
-  0% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.2);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
-@keyframes bounce {
-  0% {
-    transform: scale(1);
-  }
-  30% {
-    transform: scale(1.3);
-  }
-  60% {
-    transform: scale(0.9);
-  }
-  100% {
-    transform: scale(1);
-  }
-}
 
 /* === Account list === */
 #account-list {
