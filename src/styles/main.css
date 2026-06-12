@@ -581,7 +581,7 @@ body.theme-dark, body:not(.theme-light) {
   border: 1px solid var(--card-border);
   border-radius: 8px;
   padding: 20px;
-  width: 280px;
+  width: 336px;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -626,6 +626,20 @@ body.theme-dark, body:not(.theme-light) {
   gap: 8px;
   max-height: 400px;
   overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+#settings-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+#settings-body::-webkit-scrollbar-thumb {
+  background: var(--scroll-thumb);
+  border-radius: 2px;
+}
+
+#settings-body::-webkit-scrollbar-thumb:hover {
+  background: var(--scroll-thumb-hover);
 }
 
 .settings-section {
