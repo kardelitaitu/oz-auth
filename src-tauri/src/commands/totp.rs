@@ -617,9 +617,13 @@ mod tests {
             account.secret = vec![];
             seed_plaintext_accounts(&[account]);
 
-            let result = generate_code_impl("test-1", &state);            assert!(result.is_err(), "empty secret must produce an error");
+            let result = generate_code_impl("test-1", &state);
+            assert!(result.is_err(), "empty secret must produce an error");
             let err = result.unwrap_err();
-            assert!(err.contains("cannot be empty"), "error should mention not empty: {err}");
+            assert!(
+                err.contains("cannot be empty"),
+                "error should mention not empty: {err}"
+            );
             cleanup_auth_file();
         });
     }
@@ -677,7 +681,10 @@ mod tests {
             let result = generate_all_codes_impl(&state);
             // The batch fails entirely because make_totp (via validate_secret_length) errors.            assert!(result.is_err(), "corrupted account causes entire batch to fail");
             let err = result.unwrap_err();
-            assert!(err.contains("cannot be empty"), "error should mention empty: {err}");
+            assert!(
+                err.contains("cannot be empty"),
+                "error should mention empty: {err}"
+            );
             cleanup_auth_file();
         });
     }

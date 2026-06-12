@@ -95,7 +95,10 @@ mod tests {
     #[test]
     fn test_decode_secret_invalid_chars() {
         let err = decode_secret("!!!!invalid!!!!").unwrap_err();
-        assert!(err.contains("invalid secret"), "error should mention invalid: {err}");
+        assert!(
+            err.contains("invalid secret"),
+            "error should mention invalid: {err}"
+        );
     }
 
     #[test]
