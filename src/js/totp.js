@@ -55,7 +55,6 @@ export function updateBars(accounts, secondsRemaining) {
 
     const ring = document.querySelector(`.ring-fg[data-id="${a.id}"]`);
     const ringText = document.querySelector(`.ring-text[data-id="${a.id}"]`);
-    const timer = document.querySelector(`.card-timer[data-id="${a.id}"]`);
 
     if (ring) {
       ring.style.strokeDashoffset = offset;
@@ -65,7 +64,6 @@ export function updateBars(accounts, secondsRemaining) {
       ringText.textContent = Math.max(0, remaining);
       ringText.style.fill = color;
     }
-    if (timer) timer.textContent = `${Math.max(0, remaining)}s`;
   });
 }
 

@@ -15,7 +15,7 @@ export function escapeHtml(s) {
  * Drag & drop handlers are attached by the caller via setupDragDrop.
  */
 export function renderAccounts(accounts, accountListEl, callbacks) {
-  const { onCopy, onEdit, onDelete, onContextMenu } = callbacks;
+  const { onCopy, onContextMenu } = callbacks;
   accountListEl.innerHTML = "";
 
   if (accounts.length === 0) {
@@ -29,10 +29,15 @@ export function renderAccounts(accounts, accountListEl, callbacks) {
     card.dataset.id = a.id;
     card.draggable = true;
     card.innerHTML = `
-      <div class="card-row1">
-        <span class="card-issuer">${escapeHtml(a.issuer)}</span>
-        <div class="card-row1-right" draggable="false">
+      <div class="card-main-row">
+        <div class="card-col-1">
+          <span class="card-issuer">${escapeHtml(a.issuer)}</span>
+          <span class="card-label">${escapeHtml(a.label)}</span>
+        </div>
+        <div class="card-col-2">
           <span class="card-code" data-id="${a.id}">------</span>
+        </div>
+        <div class="card-col-3">
           <svg class="card-ring" viewBox="0 0 36 36" width="36" height="36" data-id="${a.id}">
             <circle cx="18" cy="18" r="15" fill="none" class="ring-bg"/>
             <circle cx="18" cy="18" r="15" fill="none" class="ring-fg"
@@ -41,28 +46,12 @@ export function renderAccounts(accounts, accountListEl, callbacks) {
               transform="rotate(-90 18 18)"/>
             <text x="18" y="18" data-id="${a.id}" class="ring-text">--</text>
           </svg>
-          <button class="card-edit" title="Edit" data-id="${a.id}" draggable="false">✎</button>
-          <button class="card-delete" title="Delete" draggable="false">×</button>
         </div>
-      </div>
-      <div class="card-row2">
-        <span class="card-label">${escapeHtml(a.label)}</span>
-        <span class="card-timer" data-id="${a.id}">--s</span>
       </div>
     `;
 
     // Click to copy
     card.querySelector(".card-code").addEventListener("click", () => onCopy(a.id));
-    // Edit button
-    card.querySelector(".card-edit").addEventListener("click", (e) => {
-      e.stopPropagation();
-      onEdit(a.id);
-    });
-    // Delete button
-    card.querySelector(".card-delete").addEventListener("click", (e) => {
-      e.stopPropagation();
-      onDelete(a.id);
-    });
     // Right-click context menu
     card.addEventListener("contextmenu", (e) => {
       e.preventDefault();
