@@ -1,8 +1,9 @@
-//! Drag & drop account reordering using pointer events (reliable in Tauri WebView2).
+//! Drag & drop account reordering using pointer events.
+//! Listeners are attached to `document` during drag for reliable tracking
+//! across the entire viewport — works around WebView2 pointer capture bugs.
 
 /**
  * Attach drag & drop handlers to all account cards inside `container`.
- * Uses pointer events instead of HTML5 Drag API for cross-platform reliability.
  * `onReorder(srcId, targetId)` is called when the user drops a card onto another card.
  */
 export function setupDragDrop(container, accountListEl, onReorder) {
@@ -18,6 +19,8 @@ export function setupDragDrop(container, accountListEl, onReorder) {
   }
 
   function onPointerDown(e) {
+    // Already tracking a drag, ignore
+    if (dragState) return;
     // Left button only, skip if clicking on code (copy click)
     if (e.button !== 0) return;
     if (e.target.closest(".card-code") || e.target.closest(".card-ring")) return;
@@ -33,11 +36,10 @@ export function setupDragDrop(container, accountListEl, onReorder) {
       moved: false,
     };
 
-    // Capture pointer for reliable tracking
-    card.setPointerCapture(e.pointerId);
-    card.addEventListener("pointermove", onPointerMove);
-    card.addEventListener("pointerup", onPointerUp);
-    card.addEventListener("pointercancel", onPointerCancel);
+    // Attach move/up/cancel to document so we track reliably even outside the card
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerUp);
+    document.addEventListener("pointercancel", onPointerCancel);
   }
 
   function onPointerMove(e) {
@@ -70,9 +72,9 @@ export function setupDragDrop(container, accountListEl, onReorder) {
   function onPointerUp(e) {
     if (!dragState) return;
 
-    dragState.srcCard.removeEventListener("pointermove", onPointerMove);
-    dragState.srcCard.removeEventListener("pointerup", onPointerUp);
-    dragState.srcCard.removeEventListener("pointercancel", onPointerCancel);
+    document.removeEventListener("pointermove", onPointerMove);
+    document.removeEventListener("pointerup", onPointerUp);
+    document.removeEventListener("pointercancel", onPointerCancel);
 
     if (dragState.moved) {
       dragState.srcCard.classList.remove("dragging");
@@ -98,9 +100,9 @@ export function setupDragDrop(container, accountListEl, onReorder) {
   function onPointerCancel() {
     if (!dragState) return;
 
-    dragState.srcCard.removeEventListener("pointermove", onPointerMove);
-    dragState.srcCard.removeEventListener("pointerup", onPointerUp);
-    dragState.srcCard.removeEventListener("pointercancel", onPointerCancel);
+    document.removeEventListener("pointermove", onPointerMove);
+    document.removeEventListener("pointerup", onPointerUp);
+    document.removeEventListener("pointercancel", onPointerCancel);
 
     dragState.srcCard.classList.remove("dragging");
     clearDragOver();
