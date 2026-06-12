@@ -135,6 +135,15 @@ export function setupAccountDialog(config) {
     dialog.classList.add("hidden");
   });
 
+  // Enter key submits the dialog (skip on select dropdowns)
+  dialog.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !dialog.classList.contains("hidden")) {
+      if (e.target.tagName === "SELECT") return;
+      e.preventDefault();
+      dialogSubmit.click();
+    }
+  });
+
   dialogSubmit.addEventListener("click", async () => {
     const issuer = dialogIssuer.value.trim();
     const label = dialogLabel.value.trim();
