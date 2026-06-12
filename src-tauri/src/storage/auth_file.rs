@@ -1084,8 +1084,8 @@ mod tests {
         assert_eq!(data.version, CURRENT_VERSION, "version must be upgraded");
 
         // Config: all missing fields must have defaults
-        assert_eq!(data.config.width, 320, "default width");
-        assert_eq!(data.config.height, 480, "default height");
+        assert_eq!(data.config.width, 420, "default width");
+        assert_eq!(data.config.height, 420, "default height");
         assert_eq!(data.config.left, 100, "default left");
         assert_eq!(data.config.top, 100, "default top");
         assert!(!data.config.always_on_top, "default always_on_top");
@@ -1120,8 +1120,8 @@ mod tests {
         let raw = std::fs::read_to_string(&path).unwrap();
         let saved: AuthData = serde_json::from_str(&raw).unwrap();
         assert_eq!(saved.version, CURRENT_VERSION, "upgraded version persisted");
-        assert_eq!(saved.config.width, 320, "width persisted");
-        assert_eq!(saved.config.height, 480, "height persisted");
+        assert_eq!(saved.config.width, 420, "width persisted");
+        assert_eq!(saved.config.height, 420, "height persisted");
         assert_eq!(saved.config.left, 100, "left persisted");
         assert_eq!(saved.config.top, 100, "top persisted");
         assert!(!saved.config.always_on_top, "always_on_top persisted");

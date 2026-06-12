@@ -69,11 +69,11 @@ impl<'de> Deserialize<'de> for Config {
 }
 
 fn default_width() -> u32 {
-    320
+    420
 }
 
 fn default_height() -> u32 {
-    480
+    420
 }
 
 fn default_left() -> i32 {
@@ -99,8 +99,8 @@ fn default_clipboard_clear_seconds() -> u32 {
 impl Default for Config {
     fn default() -> Self {
         Self {
-            width: 320,
-            height: 480,
+            width: 420,
+            height: 420,
             left: 100,
             top: 100,
             always_on_top: false,
@@ -120,8 +120,8 @@ mod tests {
     #[test]
     fn test_defaults() {
         let cfg = Config::default();
-        assert_eq!(cfg.width, 320);
-        assert_eq!(cfg.height, 480);
+        assert_eq!(cfg.width, 420);
+        assert_eq!(cfg.height, 420);
         assert!(!cfg.always_on_top);
         assert!(!cfg.password_protected);
         assert_eq!(cfg.theme, "dark");
@@ -213,8 +213,8 @@ mod tests {
             width: 800,
             ..Config::default()
         };
-        // Default height should be preserved (480)
-        assert_eq!(cfg.height, 480, "partial update must preserve height");
+        // Default height should be preserved (420)
+        assert_eq!(cfg.height, 420, "partial update must preserve height");
     }
 
     #[test]
@@ -266,8 +266,8 @@ mod tests {
         // Config JSON without width/height/left/top/always_on_top should use defaults
         let json = r#"{"password_protected":false}"#;
         let cfg: Config = serde_json::from_str(json).unwrap();
-        assert_eq!(cfg.width, 320, "missing width must default to 320");
-        assert_eq!(cfg.height, 480, "missing height must default to 480");
+        assert_eq!(cfg.width, 420, "missing width must default to 420");
+        assert_eq!(cfg.height, 420, "missing height must default to 420");
         assert_eq!(cfg.left, 100, "missing left must default to 100");
         assert_eq!(cfg.top, 100, "missing top must default to 100");
         assert!(

@@ -123,6 +123,13 @@ fn change_pin_impl(old_pin: &str, new_pin: &str, state: &AppState) -> Result<(),
         return Err("PIN is not set".to_string());
     }
 
+    // Lock guard: app must be unlocked to change PIN.
+    // Without this, change_pin could be called when locked (it derives
+    // its own key from old_pin), bypassing the unlock step entirely.
+    if !state.has_key() {
+        return Err("app is locked".to_string());
+    }
+
     let old_salt = Zeroizing::new(
         hex::decode(&data.config.password_salt).map_err(|e| format!("invalid salt: {e}"))?,
     );
@@ -667,14 +674,13 @@ mod tests {
         });
     }
 
-    // ── edge cases: change_pin when locked (BUG: no guard) ────
-    // NOTE: change_pin currently does NOT check AppState lock status.
-    // It derives its own key from the provided old PIN, so it works
-    // even when the app is locked. This test documents the current
-    // behavior; consider adding a lock guard for defense-in-depth.
+    // ── change_pin lock guard ────────────────────────────────
+    // change_pin now requires the app to be unlocked (key in state).
+    // This prevents changing the PIN when the app is locked, even if
+    // the old PIN is known.
 
     #[test]
-    fn test_change_pin_works_when_locked_missing_guard() {
+    fn test_change_pin_rejected_when_locked() {
         with_fs_lock(|| {
             cleanup_auth_file();
             let state = test_app_state();
@@ -686,23 +692,11 @@ mod tests {
             data.config.password_protected = true;
             data.config.password_salt = hex::encode(*salt);
             crate::storage::save(&data).unwrap();
-
-            // change_pin currently does NOT check AppState lock status —
-            // it derives its own key from the provided old_pin. Decrypt
-            // with correct old_pin succeeds even when locked.
-            let loaded = crate::storage::try_load().unwrap();
-            assert!(!state.has_key(), "app is locked (no key in state)");
-            let loaded_salt = hex::decode(&loaded.config.password_salt).unwrap();
-            let mut old_key = crypto::derive_key("mypin", &loaded_salt).unwrap();
-            let mut decrypted =
-                crate::storage::decrypt_accounts(&loaded.accounts, &old_key).unwrap();
-            assert!(decrypted.is_empty());
-            old_key.zeroize();
             key.zeroize();
-            for a in &mut decrypted {
-                a.secret.zeroize();
-            }
-            decrypted.clear();
+
+            assert!(!state.has_key(), "app is locked (no key in state)");
+            let err = change_pin_impl("mypin", "newpin", &state).unwrap_err();
+            assert!(err.contains("locked"), "change_pin must reject locked app: {err}");
             cleanup_auth_file();
         });
     }
@@ -1124,7 +1118,8 @@ mod tests {
         with_fs_lock(|| {
             cleanup_auth_file();
             let state = test_app_state();
-            let _key = seed_encrypted_auth();
+            let key = seed_encrypted_auth();
+            state.set_key(*key).unwrap();
             let err = change_pin_impl("wrong", "newpin", &state).unwrap_err();
             assert!(err.contains("wrong"), "wrong old PIN: {err}");
             cleanup_auth_file();
@@ -1151,7 +1146,8 @@ mod tests {
         with_fs_lock(|| {
             cleanup_auth_file();
             let state = test_app_state();
-            let _key = seed_encrypted_auth();
+            let key = seed_encrypted_auth();
+            state.set_key(*key).unwrap();
             change_pin_impl("mypin", "newpin", &state).unwrap();
             assert!(state.has_key(), "new key should be set in state");
             // Verify old PIN no longer works

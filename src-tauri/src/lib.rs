@@ -168,7 +168,7 @@ pub fn run() {
                     let _ = window.center();
                 }
                 let _ = window.set_always_on_top(cfg.always_on_top);
-                let _ = window.set_min_size(Some(tauri::PhysicalSize::new(420, 640)));
+                let _ = window.set_min_size(Some(tauri::PhysicalSize::new(420, 420)));
                 #[cfg(windows)]
                 let _ = window.set_background_color(Some(Color(30, 30, 30, 255)));
                 let _ = window.show();
@@ -188,13 +188,13 @@ pub fn run() {
             update_tray_icon,
             commands::totp::generate_code,
             commands::totp::generate_all_codes,
-            commands::accounts::add_account,
-            commands::accounts::add_account_from_uri,
-            commands::accounts::remove_account,
-            commands::accounts::update_account,
-            commands::accounts::list_accounts,
-            commands::accounts::get_otpauth_uri,
-            commands::accounts::save_backup_file,
+            commands::accounts::crud::add_account,
+            commands::accounts::crud::add_account_from_uri,
+            commands::accounts::crud::remove_account,
+            commands::accounts::crud::update_account,
+            commands::accounts::crud::list_accounts,
+            commands::accounts::qr::get_otpauth_uri,
+            commands::accounts::qr::save_backup_file,
             commands::auth::set_lock,
             commands::auth::unlock,
             commands::auth::lock,
