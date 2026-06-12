@@ -101,6 +101,18 @@ export function openSettings(config) {
     settingsBody.innerHTML = html;
     const pinError = document.getElementById("pin-error");
 
+    // Enter key on PIN inputs triggers the Set/Change button
+    const pinInputs = settingsBody.querySelectorAll("#pin-old, #pin-new, #pin-confirm");
+    const pinSubmitBtn = document.getElementById(hasPin ? "pin-change-btn" : "pin-set-btn");
+    pinInputs.forEach((input) => {
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          if (pinSubmitBtn) pinSubmitBtn.click();
+        }
+      });
+    });
+
     // Clipboard timeout auto-save on change
     let clipboardSaveTimer;
     document.getElementById("clipboard-clear").addEventListener("input", () => {
