@@ -376,6 +376,12 @@ async function trackWindow() {
 
 // ── Keyboard shortcuts ─────────────────────────────────────
 document.addEventListener("keydown", async (e) => {
+  // Close the window if the lock screen is showing
+  if (e.key === "Escape" && !lockOverlay.classList.contains("hidden")) {
+    lockClose.click();
+    return;
+  }
+
   if (e.target.tagName === "INPUT" && e.target.id !== "search") return;
   if (e.target.tagName === "SELECT") return;
 
