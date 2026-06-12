@@ -6,7 +6,7 @@
 <p align="center">
   <img src="https://img.shields.io/badge/rust-1.80+-orange.svg" alt="Rust 1.80+">
   <img src="https://img.shields.io/badge/tauri-v2-blue.svg" alt="Tauri v2">
-  <img src="https://img.shields.io/badge/tests-23%20passing-green.svg" alt="23 tests passing">
+  <img src="https://img.shields.io/badge/tests-116%20passing-green.svg" alt="116 tests passing">
   <img src="https://img.shields.io/badge/clippy-clean-brightgreen.svg" alt="Clippy clean">
 </p>
 
@@ -14,17 +14,20 @@
 
 ## Features
 
-- **🔐 TOTP Code Generation** — RFC 6238 compliant, supports SHA-1, SHA-256, SHA-512, 6-digit & 8-digit codes
-- **📷 QR Code Scanning** — Camera capture or image paste (Ctrl+V) to add accounts from `otpauth://` URIs
-- **🔒 Encrypted Storage** — Portable `.auth` file alongside the `.exe` — AES-256-GCM encryption with Argon2id key derivation
-- **🖥️ System Tray** — Real-time countdown pie icon, left-click toggles window, right-click menu
-- **🔑 PIN Protection** — App lock/unlock, auto-lock after inactivity, PIN change
-- **↕️ Drag & Drop** — Reorder accounts by dragging cards
-- **🎨 Dark/Light Theme** — System preference detection or manual toggle
-- **📋 Smart Clipboard** — Auto-clears copied codes after 30s
-- **⚡ Keyboard Shortcuts** — `Ctrl+N` add, `Ctrl+F` search, `Ctrl+L` lock, `Escape` dismiss
-- **🌐 Fully Offline** — No network permissions, no telemetry, no cloud dependency
-- **🛡️ Memory Hardened** — Secrets zeroized after use, encryption key `VirtualLock`-ed on Windows
+- **💾 Small & Portable** — Single 9 MB executable, no installer, no dependencies. Run from USB.
+- **📐 Remembers Window Size & Position** — Picks up exactly where you left off.
+- **📌 Toggle Always on Top** — Keep the window pinned above all others.
+- **🔐 PIN Protection** — Lock/unlock with a PIN, auto-lock after inactivity (configurable timeout).
+- **📋 Auto-Clear Clipboard** — Copied codes are automatically cleared after 30 seconds.
+- **🔒 Fully Encrypted Storage** — AES-256-GCM + Argon2id key derivation. Portable `.auth` file lives next to the `.exe`.
+- **🔑 TOTP Code Generation** — RFC 6238 compliant. Supports SHA-1, SHA-256, SHA-512, 6 & 8 digit codes.
+- **🖥️ System Tray** — Real-time countdown pie icon, left-click toggles window.
+- **↕️ Drag & Drop Reorder** — Grab the handle on any card to reorder your accounts.
+- **🎨 Dark/Light Themes** — Follows system preference, toggle with one click.
+- **⚡ Keyboard Shortcuts** — `Ctrl+N` add, `Ctrl+F` search, `Ctrl+L` lock, `Escape` dismiss.
+- **🔍 Instant Search** — Filter accounts as you type.
+- **🌐 Fully Offline** — No network permissions, no telemetry, no cloud.
+- **🛡️ Memory Hardened** — Secrets zeroized after use, encryption key `VirtualLock`-ed on Windows.
 
 ---
 
