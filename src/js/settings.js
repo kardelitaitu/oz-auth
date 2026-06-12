@@ -219,6 +219,10 @@ export function openSettings(config) {
 
     if (hasPin) {
       document.getElementById("pin-change-btn").addEventListener("click", async () => {
+        if (isLocked()) {
+          toast("App is locked", true);
+          return;
+        }
         const oldPin = document.getElementById("pin-old").value;
         const newPin = document.getElementById("pin-new").value;
         const confirm = document.getElementById("pin-confirm").value;
@@ -248,6 +252,10 @@ export function openSettings(config) {
       });
     } else {
       document.getElementById("pin-set-btn").addEventListener("click", async () => {
+        if (isLocked()) {
+          toast("App is locked", true);
+          return;
+        }
         const newPin = document.getElementById("pin-new").value;
         const confirm = document.getElementById("pin-confirm").value;
         if (!newPin || !confirm) {
