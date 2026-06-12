@@ -152,22 +152,23 @@ body.theme-dark, body:not(.theme-light) {
 #btn-settings {
   width: 32px;
   height: 32px;
-  border: 1px solid var(--input-border);
+  border: none;
   border-radius: 4px;
-  background: var(--input-bg);
-  color: var(--text);
+  background: transparent;
+  color: var(--btn-color);
   font-size: 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: background 0.1s;
+  transition: background 0.08s, color 0.08s;
 }
 
 #btn-theme:hover,
 #btn-add:hover,
 #btn-settings:hover {
   background: var(--btn-hover-bg);
+  color: var(--btn-hover-text);
 }
 
 /* === Account list === */
