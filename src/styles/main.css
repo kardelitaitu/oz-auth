@@ -326,7 +326,7 @@ body.theme-dark, body:not(.theme-light) {
   color: var(--code-color);
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   cursor: pointer;
-  user-select: all;
+  user-select: none;
 }
 
 .card-ring {
