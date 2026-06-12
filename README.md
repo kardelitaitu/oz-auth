@@ -1,76 +1,96 @@
-# oz-auth — Portable Desktop TOTP Authenticator
-
-> A secure, offline TOTP authenticator for Windows. Like Google Authenticator, on your desktop.
-> Built with **Tauri v2 + Rust**. No installer — runs from anywhere.
+<h1 align="center">oz-auth</h1>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/rust-1.80+-orange.svg" alt="Rust 1.80+">
-  <img src="https://img.shields.io/badge/tauri-v2-blue.svg" alt="Tauri v2">
-  <img src="https://img.shields.io/badge/tests-249%20passing-green.svg" alt="249 tests passing">
+  <strong>Portable Desktop TOTP Authenticator</strong><br>
+  Secure, offline two-factor authentication for Windows. No installer. No cloud. No compromise.
+</p>
+
+<p align="center">
+  <a href="https://github.com/kardelitaitu/oz-auth/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
+  <img src="https://img.shields.io/badge/rust-1.80%2B-orange.svg" alt="Rust 1.80+">
+  <img src="https://img.shields.io/badge/tauri-v2-7c3aed.svg" alt="Tauri v2">
+  <img src="https://img.shields.io/badge/tests-307%20passing-brightgreen.svg" alt="307 tests passing">
   <img src="https://img.shields.io/badge/clippy-clean-brightgreen.svg" alt="Clippy clean">
+  <img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build passing">
 </p>
 
 ---
 
+## Why oz-auth?
+
+Most authenticator apps are mobile-only, closed-source, or require cloud sync. oz-auth is:
+
+- **Desktop-native** — lives on your taskbar, not your phone
+- **Fully offline** — zero network permissions, zero telemetry
+- **Portable** — single `.exe` + `.auth` file. Run from a USB stick.
+- **Open source** — inspect every line of code that touches your secrets
+
+---
+
+<!-- Add a screenshot or GIF here: -->
+<!-- ![oz-auth Screenshot](screenshot.png) -->
+
 ## Features
 
-- **💾 Small & Portable** — Single ~10 MB executable, no installer, no dependencies. Run from USB.
-- **📐 Remembers Window Size & Position** — Picks up exactly where you left off.
-- **📌 Toggle Always on Top** — Keep the window pinned above all others.
-- **🔐 PIN Protection** — Lock/unlock with a PIN, auto-lock after inactivity (configurable timeout).
-- **📋 Auto-Clear Clipboard** — Copied codes are automatically cleared after 30 seconds.
-- **🔒 Fully Encrypted Storage** — AES-256-GCM + Argon2id key derivation. Portable `.auth` file lives next to the `.exe`.
-- **🔑 TOTP Code Generation** — RFC 6238 compliant. Supports SHA-1, SHA-256, SHA-512, 6 & 8 digit codes.
-- **🖥️ System Tray** — Real-time countdown pie icon, left-click toggles window.
-- **↕️ Drag & Drop Reorder** — Grab the handle on any card to reorder your accounts.
-- **🎨 Dark/Light Themes** — Follows system preference, toggle with one click.
-- **⚡ Keyboard Shortcuts** — `Ctrl+N` add, `Ctrl+F` search, `Ctrl+L` lock, `Escape` dismiss.
-- **🔍 Instant Search** — Filter accounts as you type.
-- **🌐 Fully Offline** — No network permissions, no telemetry, no cloud.
-- **🛡️ Memory Hardened** — Secrets zeroized after use, encryption key `VirtualLock`-ed on Windows.
+| | Feature | Details |
+|---|---------|---------|
+| 💾 | **Portable** | Single ~10 MB executable. No installer, no dependencies. Run from USB. |
+| 🔑 | **TOTP Codes** | RFC 6238 compliant. SHA-1/256/512, 6 & 8 digit codes. |
+| 🔒 | **Encrypted Storage** | AES-256-GCM + Argon2id key derivation. Portable `.auth` file. |
+| 🔐 | **PIN Protection** | Lock/unlock with PIN. Auto-lock after configurable inactivity. |
+| 🖥️ | **System Tray** | Real-time countdown pie icon. Left-click toggles window. |
+| ↕️ | **Drag & Drop** | Reorder accounts by dragging any card. |
+| 🎨 | **Themes** | Dark/light mode. Follows system preference. |
+| 📋 | **Auto-Clear Clipboard** | Copied codes cleared after 30 seconds. |
+| ⌨️ | **Keyboard Shortcuts** | `Ctrl+N` add, `Ctrl+F` search, `Ctrl+L` lock, `Esc` dismiss |
+| 🔍 | **Instant Search** | Filter accounts as you type. |
+| 📐 | **Window Memory** | Remembers size, position, and always-on-top state. |
+| 🛡️ | **Memory Hardened** | Secrets zeroized after use. Key `VirtualLock`-ed on Windows. |
 
 ---
 
 ## Quick Start
 
-### Prerequisites
+### For End Users
 
-- [Rust](https://rustup.rs/) 1.80+
-- [Node.js](https://nodejs.org/) 18+
-- Windows 10+ (primary target; cross-platform capable)
+Download `oz-auth.exe` and the companion `.auth` file. Place them in the same folder. Run. That's it.
 
-### Install Dependencies
+### For Developers
+
+**Prerequisites:** [Rust](https://rustup.rs/) 1.80+, [Node.js](https://nodejs.org/) 18+, Windows 10+
 
 ```bash
-# Clone the repository
 git clone https://github.com/kardelitaitu/oz-auth.git
 cd oz-auth
-
-# Install frontend dependencies
 npm install
 ```
 
-### Development
+**Development (hot-reload):**
 
 ```bash
-# Start with hot-reload (Vite + Tauri)
 cargo tauri dev
 ```
 
-### Production Build
+**Production build:**
 
 ```bash
-# One command: build frontend then package .exe
-npm run tauri
-
-# Or manually in two steps:
-npm run build              # Step 1: Build frontend with Vite
-cargo tauri build          # Step 2: Package .exe (requires pre-built dist/)
+npm run tauri        # Builds frontend + packages .exe (~6 min on 32-core)
 ```
 
-The output is in `src-tauri/target/release/`. Copy `oz-auth.exe` anywhere — it's fully portable.
+The output is at `src-tauri/target/release/oz-auth.exe`.
 
-> **Note:** `beforeBuildCommand` is intentionally omitted from `tauri.conf.json` to avoid a Vite v6 subprocess exit-code issue on Windows. The `npm run tauri` script handles both steps.
+> **Note:** `beforeBuildCommand` is omitted from `tauri.conf.json` intentionally to avoid a Vite v6 subprocess exit-code issue on Windows.
+
+### All Commands
+
+| Command | Description |
+|---------|-------------|
+| `cargo tauri dev` | Dev mode with hot-reload |
+| `npm run tauri` | Full production build |
+| `cargo test` | Run 307 tests |
+| `cargo clippy -- -D warnings` | Lint (strict) |
+| `cargo fmt --check` | Check formatting |
+| `cargo check` | Type-check only |
 
 ---
 
@@ -78,93 +98,71 @@ The output is in `src-tauri/target/release/`. Copy `oz-auth.exe` anywhere — it
 
 ### Adding an Account
 
-1. Click **+** (or `Ctrl+N`) to open the Add Account dialog
-2. Enter **Issuer** (e.g. "Google"), **Label** (e.g. "user@gmail.com"), and **Secret Key**
+Click **+** (or `Ctrl+N`) → enter **Issuer** (e.g. "Google"), **Label** (e.g. "user@gmail.com"), and **Secret Key**.
 
 ### Managing Accounts
 
 | Action | How |
 |--------|-----|
 | **Copy code** | Click the code on any card |
-| **Edit name** | Click ✎ or right-click → Edit |
+| **Edit** | Click pencil icon or right-click → Edit |
 | **Delete** | Click × or right-click → Delete |
 | **Reorder** | Drag any card to a new position |
 | **Search** | Type in the search bar (`Ctrl+F`) |
 
-### Setting a PIN
-
-1. Click **⚙** in the toolbar
-2. Enter and confirm a PIN → click **Set PIN**
-3. Your accounts are now encrypted with AES-256-GCM
-4. The app will auto-lock after 5 minutes of inactivity
-
 ### Backup & Restore
 
-The `.auth` file lives next to `oz-auth.exe` (same folder, same base name).  
-**To backup:** copy the `.auth` file to a safe location.  
-**To restore:** replace the `.auth` file next to the `.exe` and restart.
+The `.auth` file lives next to `oz-auth.exe` (same folder, same base name).
 
----
-
-## Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+N` | Add account |
-| `Ctrl+F` | Focus search |
-| `Ctrl+L` | Lock app |
-| `Escape` | Dismiss any dialog |
+- **Backup:** Copy the `.auth` file to a safe location.
+- **Restore:** Replace the `.auth` file next to the `.exe` and restart.
 
 ---
 
 ## Security Design
 
-oz-auth is designed with the assumption that your desktop could be compromised.  
-Every layer is built to minimize the window where secrets exist in plaintext memory.
+oz-auth assumes your desktop could be compromised. Every layer minimizes the window where secrets exist in plaintext.
 
 ### At Rest
 
-- Accounts are stored in a portable `.auth` JSON file next to the `.exe`
-- Secrets are encrypted with **AES-256-GCM** using a unique nonce per write
-- The encryption key is derived from your PIN via **Argon2id** (memory-hard, GPU-resistant)
-- If no PIN is set, accounts are stored as plaintext JSON (prompted to set PIN on first launch)
+- Accounts stored in a portable `.auth` JSON file
+- Secrets encrypted with **AES-256-GCM** (unique nonce per write)
+- Key derived from PIN via **Argon2id** (memory-hard, GPU-resistant)
+- No PIN = plaintext storage (prompted to set PIN on first launch)
 
 ### In Memory
 
-- The encryption key is wrapped in `Zeroizing<[u8; 32]>` — overwritten on `lock()`
-- On Windows, `VirtualLock` prevents the key from being paged to swap
-- After every TOTP generation, all decrypted account secrets are zeroized
-- After every encrypt/decrypt, all intermediate buffers (JSON, nonce, ciphertext) are zeroized
-- Derived keys and salts from PIN operations are zeroized immediately after use
-- The frontend never sees raw secrets — only `AccountSummary` (no `secret` field) over IPC
-- `SetProcessMitigationPolicy` blocks dynamic code execution, remote image loads
+- Encryption key wrapped in `Zeroizing<[u8; 32]>` — overwritten on `lock()`
+- `VirtualLock` prevents key from being paged to swap (Windows)
+- All decrypted secrets zeroized after every TOTP generation
+- All intermediate buffers zeroized after encrypt/decrypt
+- Frontend never sees raw secrets — only `AccountSummary` (no `secret` field) via IPC
+- `SetProcessMitigationPolicy` blocks dynamic code execution and remote image loads
 
 ### In Transit (IPC)
 
-- All communication between the WebView frontend and Rust backend uses Tauri's IPC
-- Secrets are never passed to the frontend — codes are generated entirely in Rust
-- The clipboard auto-clears after 30 seconds
+- All WebView ↔ Rust communication uses Tauri's IPC
+- Secrets never leave Rust — codes generated entirely in backend
+- Clipboard auto-clears after 30 seconds
 
 ---
 
 ## Architecture
 
 ```
-┌──────────────────────────────────────────┐
-│              FRONTEND (WebView)           │
-│  Vanilla JS + Vite + @tauri-apps/api     │
-│  • Account cards, countdown, drag & drop │
-│  • Lock screen, settings, themes         │
-└──────────────────┬───────────────────────┘
+┌─────────────────────────────────────┐
+│       FRONTEND (WebView)            │
+│  Vanilla JS + Vite + @tauri-apps    │
+│  Cards · Countdown · Drag & Drop    │
+│  Lock screen · Settings · Themes    │
+└──────────────────┬──────────────────┘
                    │  invoke() — Tauri IPC
-┌──────────────────┴───────────────────────┐
-│              BACKEND (Rust)               │
-│  • totp-rs — RFC 6238 code generation    │
-│  • AES-256-GCM + Argon2id — encryption   │
-│  • .auth file — portable JSON storage    │
-│  • System tray — pie chart icon          │
-│  • Process mitigation — Windows hardening│
-└──────────────────────────────────────────┘
+┌──────────────────┴──────────────────┐
+│       BACKEND (Rust)                │
+│  totp-rs · AES-256-GCM · Argon2id  │
+│  .auth file · System tray           │
+│  Process mitigation · Diagnostics   │
+└─────────────────────────────────────┘
 ```
 
 ### Tech Stack
@@ -176,94 +174,55 @@ Every layer is built to minimize the window where secrets exist in plaintext mem
 | Frontend | Vanilla HTML/CSS/JS + Vite |
 | TOTP Engine | `totp-rs` v5 (RFC 6238) |
 | Encryption | `aes-gcm` v0.10 + `argon2` v0.5 |
-
 | Memory Security | `zeroize` v1.8 |
 
----
-
-## Project Structure
+<details>
+<summary><strong>Project Structure</strong></summary>
 
 ```
 tauri-authenticator/
-├── README.md
-├── PLAN.md                     # Full architecture & planning doc
-├── AGENTS.md                   # AI assistant instructions
+├── src/                        # Frontend (WebView)
+│   ├── main.js                 # Orchestrator
+│   ├── js/                     # TOTP, accounts, clipboard, lock, settings, drag & drop
+│   └── styles/                 # Global styles, theme variables
+├── src-tauri/                  # Backend (Rust)
+│   └── src/
+│       ├── commands/            # totp, accounts, auth
+│       ├── storage/auth_file.rs # .auth file I/O + encrypt/decrypt
+│       ├── crypto.rs            # Argon2id + AES-256-GCM
+│       ├── tray.rs              # System tray (pie icon, menu)
+│       └── diagnostics.rs       # Crash logging, event log
 ├── index.html                  # Vite entry point
 ├── package.json                # Frontend dependencies
-├── vite.config.js              # Vite config
-├── src/                        # Frontend (WebView)
-│   ├── main.js                 # Orchestrator — imports all modules
-│   └── js/
-│       ├── totp.js             # TOTP format, countdown, bar updates
-│       ├── accounts.js         # Account cards, add/edit dialog
-│       ├── clipboard.js        # Copy-to-clipboard with auto-clear
-│       ├── lock.js             # Lock overlay, PIN entry, unlock
-│       ├── settings.js         # Settings dialog (PIN, backup, clipboard)
-│       └── dragdrop.js         # Drag-and-drop account reordering
-│   └── styles/
-│       ├── main.css            # Global styles, titlebar, cards
-│       └── themes.css          # Dark/light theme variables
-├── src-tauri/                  # Tauri backend (Rust)
-│   ├── Cargo.toml              # Rust dependencies
-│   ├── tauri.conf.json         # Tauri window + bundle config
-│   ├── build.rs                # Tauri build script
-│   ├── capabilities/
-│   │   └── default.json        # IPC permissions
-│   └── src/
-│       ├── main.rs             # Entry, process mitigation
-│       ├── lib.rs              # App builder, AppState, IPC registry
-│       ├── commands/
-│       │   ├── totp.rs         # TOTP code generation
-│       │   ├── accounts.rs     # CRUD operations
-│       │   └── auth.rs         # Lock/unlock, PIN, backup
-│       ├── models/
-│       │   └── account.rs      # Account + AccountSummary structs
-│       ├── storage/
-│       │   └── auth_file.rs    # .auth file read/write + encrypt/decrypt
-│       ├── crypto.rs           # Argon2id + AES-256-GCM
-│       ├── config.rs           # App settings
-│       ├── paths.rs            # Exe-relative path resolution
-│       ├── tray.rs             # System tray (pie icon, menu)
-│       ├── diagnostics.rs      # Crash logging / event log
-│       └── utils/
-│           └── otpauth.rs      # otpauth:// URI parser
-└── .gitignore
+├── AGENTS.md                   # AI assistant instructions
+├── PLAN.md                     # Architecture & planning
+└── CHANGELOG.md                # Release history
 ```
+
+</details>
 
 ---
 
-## Build Commands
+## Contributing
 
-```bash
-# Rust checks
-cargo check                    # Type-check only
-cargo test                     # Run tests (249 tests)
-cargo clippy -- -D warnings    # Lint with strict mode
-cargo fmt --check              # Verify formatting
+Contributions are welcome. To get started:
 
-# Frontend
-npm run dev                    # Start Vite dev server (port 1420)
-npm run build                  # Production frontend build
+1. Fork the repository
+2. Create a feature branch (`git checkout -b feature/my-feature`)
+3. Make your changes and run `cargo test && cargo clippy -- -D warnings`
+4. Commit with a clear message
+5. Open a pull request
 
-# Full app
-cargo tauri dev                # Dev mode (frontend + backend with HMR)
-npm run tauri                  # Build frontend then package .exe
-# or manually:
-npm run build && cargo tauri build
-```
+For architectural decisions, see [PLAN.md](PLAN.md).
 
 ---
 
 ## Changelog
 
-See [CHANGELOG.md](CHANGELOG.md) for a detailed history of changes.
+See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ---
 
 ## License
 
-MIT © kardelitaitu
-
----
-
-*Built with Rust, hardened with zeroize. No network. No telemetry. Just codes.*
+[MIT](LICENSE) © kardelitaitu

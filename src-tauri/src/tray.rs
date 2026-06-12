@@ -100,7 +100,8 @@ pub fn generate_pie_icon(pct: f64) -> Result<Image<'static>, Box<dyn std::error:
     let cx = 16f64;
     let cy = 16f64;
     let radius = 14f64;
-    let angle = (pct / 100.0) * std::f64::consts::TAU - std::f64::consts::FRAC_PI_2;
+    let clamped = pct.clamp(0.0, 100.0);
+    let angle = (clamped / 100.0) * std::f64::consts::TAU - std::f64::consts::FRAC_PI_2;
 
     let bg_color = (30u8, 30u8, 30u8); // dark background
     let fill_color = (93u8, 173u8, 226u8); // blue fill (matches #5dade2)
@@ -240,6 +241,109 @@ mod tests {
         assert_eq!(img.height(), 32);
         assert_eq!(img.rgba().len(), 4096);
         // No crash — 150% creates angle > 1.5× TAU, which is fine for atan2
+    }
+
+    #[test]
+    fn test_generate_pie_icon_zero_pct_all_background() {
+        // At 0%, no pixels should be in the fill slice — all circle pixels are background
+        let img = generate_pie_icon(0.0).unwrap();
+        let bytes = img.rgba();
+        // Check center pixel: should be background color (30, 30, 30) with alpha > 0
+        let idx = (16 * 32 + 16) * 4;
+        assert_eq!(bytes[idx], 30, "center R should be background at 0%");
+        assert_eq!(bytes[idx + 1], 30, "center G should be background at 0%");
+        assert_eq!(bytes[idx + 2], 30, "center B should be background at 0%");
+        assert!(bytes[idx + 3] > 0, "center should be visible");
+    }
+
+    #[test]
+    fn test_generate_pie_icon_100_pct_all_fill() {
+        // At 100%, all circle pixels should be in the fill slice — fill color (93, 173, 226)
+        let img = generate_pie_icon(100.0).unwrap();
+        let bytes = img.rgba();
+        let idx = (16 * 32 + 16) * 4;
+        assert_eq!(bytes[idx], 93, "center R should be fill at 100%");
+        assert_eq!(bytes[idx + 1], 173, "center G should be fill at 100%");
+        assert_eq!(bytes[idx + 2], 226, "center B should be fill at 100%");
+        assert!(bytes[idx + 3] > 0, "center should be visible");
+    }
+
+    #[test]
+    fn test_generate_pie_icon_half_pct_midpoint_angle() {
+        // At 50%, angle = PI/2. atan2 returns [-PI, PI].
+        // Pixels with angle <= PI/2 are filled.
+        // Lower-left pixel (8,24): dx=-8, dy=8, dist=11.3 (inside), angle=3PI/4≈2.36
+        //   2.36 > PI/2=1.57 → NOT filled → background (30)
+        // Bottom-center (16,28): dx=0, dy=12, dist=12 (inside), angle=PI/2=1.57
+        //   1.57 <= 1.57 → filled → fill color (93)
+        let img = generate_pie_icon(50.0).unwrap();
+        let bytes = img.rgba();
+
+        let left_idx = (24 * 32 + 8) * 4; // x=8, y=24 (lower-left quadrant)
+        assert_eq!(
+            bytes[left_idx], 30,
+            "lower-left should be background at 50%"
+        );
+        assert_eq!(bytes[left_idx + 1], 30);
+        assert_eq!(bytes[left_idx + 2], 30);
+
+        let bot_idx = (28 * 32 + 16) * 4; // x=16, y=28 (bottom-center)
+        assert_eq!(bytes[bot_idx], 93, "bottom-center should be fill at 50%");
+        assert_eq!(bytes[bot_idx + 1], 173);
+        assert_eq!(bytes[bot_idx + 2], 226);
+    }
+
+    #[test]
+    fn test_generate_pie_icon_pixel_outside_circle_transparent() {
+        // Pixels far outside the radius should have alpha=0 (fully transparent)
+        let img = generate_pie_icon(75.0).unwrap();
+        let bytes = img.rgba();
+        // Top-left corner (0,0)
+        assert_eq!(bytes[3], 0, "corner pixel should be transparent");
+        // Bottom-right corner (31,31)
+        let corner_idx = (31 * 32 + 31) * 4;
+        assert_eq!(bytes[corner_idx + 3], 0, "far corner should be transparent");
+    }
+
+    #[test]
+    fn test_generate_pie_icon_edge_anti_aliasing() {
+        // Pixels at the edge of the circle should have anti-aliasing.
+        // At (16, 2): dist=14=radius → edge_alpha=0 (fully transparent at boundary).
+        // At (16, 3): dist=13 < radius → edge_alpha > 0 (partially opaque inside).
+        let img = generate_pie_icon(100.0).unwrap();
+        let bytes = img.rgba();
+
+        // Pixel at exactly the boundary — alpha should be 0 (edge of anti-alias band)
+        let boundary_idx = (2 * 32 + 16) * 4;
+        let boundary_alpha = bytes[boundary_idx + 3];
+        assert_eq!(
+            boundary_alpha, 0,
+            "pixel at exact radius boundary should have alpha=0: {boundary_alpha}"
+        );
+
+        // Pixel one row inside — should have partial alpha (anti-aliasing band)
+        let inner_idx = (3 * 32 + 16) * 4;
+        let inner_alpha = bytes[inner_idx + 3];
+        assert!(
+            inner_alpha > 0 && inner_alpha < 255,
+            "pixel inside the anti-alias band should have partial alpha: {inner_alpha}"
+        );
+    }
+
+    #[test]
+    fn test_generate_pie_icon_negative_pct_same_as_zero() {
+        // Negative pct should produce the same result as 0%
+        let neg = generate_pie_icon(-1.0).unwrap();
+        let zero = generate_pie_icon(0.0).unwrap();
+        assert_eq!(neg.rgba(), zero.rgba(), "negative should match 0%");
+    }
+
+    #[test]
+    fn test_generate_pie_icon_over_100_same_as_100() {
+        // Over 100% should produce the same result as 100%
+        let over = generate_pie_icon(200.0).unwrap();
+        let full = generate_pie_icon(100.0).unwrap();
+        assert_eq!(over.rgba(), full.rgba(), ">100% should match 100%");
     }
 
     #[test]

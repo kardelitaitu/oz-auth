@@ -226,7 +226,10 @@ mod tests {
         assert_eq!(cfg.height, 480, "missing height must default to 480");
         assert_eq!(cfg.left, 100, "missing left must default to 100");
         assert_eq!(cfg.top, 100, "missing top must default to 100");
-        assert!(!cfg.always_on_top, "missing always_on_top must default to false");
+        assert!(
+            !cfg.always_on_top,
+            "missing always_on_top must default to false"
+        );
         assert_eq!(cfg.theme, "dark");
     }
 

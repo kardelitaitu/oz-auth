@@ -152,7 +152,9 @@ mod tests {
     }
 
     fn with_fs_lock(f: impl FnOnce()) {
-        let _lock = crate::storage::auth_file::FS_TEST_MUTEX.lock().unwrap();
+        let _lock = crate::storage::auth_file::FS_TEST_MUTEX
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         f();
     }
 

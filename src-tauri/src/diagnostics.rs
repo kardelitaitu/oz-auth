@@ -81,7 +81,14 @@ mod tests {
     use super::*;
 
     fn with_log_lock(f: impl FnOnce()) {
-        let _lock = LOG_BUF_TEST_MUTEX.lock().unwrap();
+        let _lock = LOG_BUF_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        // Recover LOG_BUF if poisoned by a panicking test — otherwise
+        // every event() call silently drops its data and tests fail.
+        // into_inner() gives us the guard but does NOT clear the poison bit;
+        // clear_poison() (Rust 1.77+) resets it so future lock() calls succeed.
+        let _guard = LOG_BUF.lock().unwrap_or_else(|e| e.into_inner());
+        drop(_guard);
+        LOG_BUF.clear_poison();
         let _ = flush_to_log_str(); // clear any leftover from previous tests
         f();
     }
@@ -253,24 +260,88 @@ mod tests {
         let _ = std::fs::remove_file(&crash_path);
 
         with_log_lock(|| {
+            let prev_hook = std::panic::take_hook();
             init();
-        });
 
-        // Trigger panic in a separate thread to avoid poisoning test mutexes
-        let handle = std::thread::spawn(|| {
-            panic!("test crash for coverage");
-        });
-        let _ = handle.join(); // thread panics — hook writes crash file
+            let handle = std::thread::spawn(|| {
+                panic!("test crash for coverage");
+            });
+            let _ = handle.join();
 
-        assert!(
-            crash_path.exists(),
-            "crash file should exist after panic: {}",
-            crash_path.display()
-        );
-        let report = std::fs::read_to_string(&crash_path).unwrap();
-        assert!(report.contains("=== CRASH ==="), "report header missing");
+            // Recover LOG_BUF poisoned by the spawned thread's panic
+            let _recovered = LOG_BUF.lock().unwrap_or_else(|e| e.into_inner());
+
+            // Verify the crash file INSIDE the lock — other tests running
+            // in parallel can also trigger our globally-installed hook and
+            // overwrite the file if we check after releasing the lock.
+            assert!(
+                crash_path.exists(),
+                "crash file should exist after panic: {}",
+                crash_path.display()
+            );
+            let report = std::fs::read_to_string(&crash_path).unwrap();
+            assert!(
+                report.contains("=== CRASH ==="),
+                "report header missing, got: {:?}",
+                &report[..report.len().min(200)]
+            );
+
+            // Restore hook BEFORE releasing LOG_BUF_TEST_MUTEX so other tests
+            // don't see our hook firing during their panics.
+            std::panic::set_hook(prev_hook);
+        });
 
         let _ = std::fs::remove_file(&crash_path);
+    }
+
+    #[test]
+    fn test_flush_with_no_newlines_in_buffer_falls_through() {
+        with_log_lock(|| {
+            // Write a >10KB buffer with NO newlines directly (bypassing event())
+            // This exercises the fallthrough after rfind('\n') returns None
+            {
+                let mut guard = LOG_BUF.lock().unwrap_or_else(|e| e.into_inner());
+                *guard = Some("A".repeat(12_000));
+            }
+            let log = flush_to_log_str();
+            // Should fall through to `buf` (no trimming applied since no newline found)
+            assert_eq!(log.len(), 12_000, "buffer should be returned as-is");
+        });
+    }
+
+    /// Poison the mutex, test graceful degradation, then ALWAYS recover.
+    /// Uses catch_unwind so recovery runs even if assertions fail.
+    #[test]
+    fn test_flush_poisoned_mutex_returns_empty() {
+        let _ser_lock = LOG_BUF_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let _ = flush_to_log_str();
+
+        let result = std::panic::catch_unwind(|| {
+            // Poison LOG_BUF by panicking while holding its lock
+            let _ = std::thread::spawn(|| {
+                let _guard = LOG_BUF.lock().unwrap_or_else(|e| e.into_inner());
+                panic!("deliberately poison LOG_BUF for coverage test");
+            })
+            .join();
+
+            // Now LOG_BUF is poisoned — flush should hit the else branch
+            let log = flush_to_log_str();
+            assert!(
+                log.is_empty(),
+                "poisoned mutex should return empty: {log:?}"
+            );
+        });
+
+        // ALWAYS recover the mutex and clear poison so subsequent tests aren't
+        // affected. into_inner() gives us the guard but does NOT clear the
+        // poison bit; clear_poison() (Rust 1.77+) resets it.
+        let _recovered = LOG_BUF.lock().unwrap_or_else(|e| e.into_inner());
+        drop(_recovered);
+        LOG_BUF.clear_poison();
+
+        if let Err(e) = result {
+            std::panic::resume_unwind(e);
+        }
     }
 
     #[test]

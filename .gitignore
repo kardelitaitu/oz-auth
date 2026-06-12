@@ -48,3 +48,4 @@ src-tauri/tarpaulin-report/
 src-tauri/metadata.json
 nul
 src-tauri/nul
+src-tauri/build_rs_cov.profraw
