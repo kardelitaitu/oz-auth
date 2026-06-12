@@ -81,7 +81,6 @@ export function setupAccountDialog(config) {
     dialogPeriod,
     dialogSubmit,
     dialogCancel,
-    dialogScan,
     btnAdd,
     toast,
     getAccounts,
@@ -104,7 +103,6 @@ export function setupAccountDialog(config) {
     dialogDigits.parentElement.style.display = "none";
     dialogPeriod.parentElement.style.display = "none";
     dialogSubmit.textContent = "Save";
-    dialogScan.style.display = "none";
     dialog.classList.remove("hidden");
     dialogIssuer.focus();
   }
@@ -124,7 +122,6 @@ export function setupAccountDialog(config) {
     dialogDigits.value = "6";
     dialogPeriod.value = "30";
     dialogSubmit.textContent = "Add";
-    dialogScan.style.display = "";
     dialog.classList.remove("hidden");
     dialogIssuer.focus();
   }
