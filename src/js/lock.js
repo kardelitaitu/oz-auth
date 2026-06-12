@@ -11,9 +11,11 @@ export function createLockManager(config) {
     lockInput,
     lockSubmit,
     lockError,
-    onUnlock,      // called after successful unlock
-    onLockStart,   // called when showing lock screen
-    onLockEnd,     // called when hiding lock screen
+    lockClose,
+    onClose,        // called when close button is clicked
+    onUnlock,       // called after successful unlock
+    onLockStart,    // called when showing lock screen
+    onLockEnd,      // called when hiding lock screen
   } = config;
 
   let locked = false;
@@ -39,6 +41,12 @@ export function createLockManager(config) {
   function hide() {
     lockOverlay.classList.add("hidden");
     if (onLockEnd) onLockEnd();
+  }
+
+  if (lockClose) {
+    lockClose.addEventListener("click", async () => {
+      if (onClose) await onClose();
+    });
   }
 
   lockSubmit.addEventListener("click", async () => {
