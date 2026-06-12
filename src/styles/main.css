@@ -205,7 +205,7 @@ body.theme-dark, body:not(.theme-light) {
   background: var(--card-bg);
   border: 1px solid var(--card-border);
   border-radius: 6px;
-  padding: 12px;
+  padding: 8px 10px;
   transition: border-color 0.15s, transform 0.15s ease, box-shadow 0.15s ease, opacity 0.15s ease;
   cursor: grab;
 }
@@ -232,29 +232,51 @@ body.theme-dark, body:not(.theme-light) {
   transform: scale(1.02);
 }
 
-.card-header {
+.card-row1 {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 2px;
+}
+
+.card-row1-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
 .card-issuer {
   font-weight: 600;
   font-size: 13px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
+}
+
+.card-row2 {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 2px;
 }
 
 .card-label {
-  font-size: 12px;
+  font-size: 11px;
   color: var(--btn-color);
-  margin-bottom: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-right: 8px;
 }
 
 .card-delete {
   background: none;
   border: none;
   color: var(--btn-color);
-  font-size: 18px;
+  font-size: 16px;
   cursor: pointer;
   padding: 0 4px;
   line-height: 1;
@@ -268,36 +290,36 @@ body.theme-dark, body:not(.theme-light) {
 }
 
 .card-code {
-  font-size: 28px;
+  font-size: 20px;
   font-weight: 700;
-  letter-spacing: 4px;
+  letter-spacing: 3px;
   color: var(--code-color);
   font-family: 'Cascadia Code', 'Fira Code', 'Consolas', monospace;
   cursor: pointer;
   user-select: all;
-  margin-bottom: 6px;
 }
 
-.card-bar {
-  height: 4px;
-  background: var(--bar-bg);
-  border-radius: 2px;
-  overflow: hidden;
-  margin-bottom: 4px;
+.card-ring {
+  display: block;
+  flex-shrink: 0;
 }
 
-.card-bar-fill {
-  height: 100%;
-  background: var(--bar-fill);
-  border-radius: 2px;
-  transition: width 1s linear;
-  width: 0%;
+.ring-bg {
+  stroke: var(--bar-bg);
+  stroke-width: 2;
+}
+
+.ring-fg {
+  stroke: var(--bar-fill);
+  stroke-width: 2;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 1s linear;
 }
 
 .card-timer {
   font-size: 11px;
   color: var(--btn-color);
-  text-align: right;
+  flex-shrink: 0;
 }
 
 /* === Lock overlay === */
@@ -672,12 +694,6 @@ body.theme-dark, body:not(.theme-light) {
 .card-edit:hover {
   opacity: 1;
   color: var(--code-color);
-}
-
-.card-header-buttons {
-  display: flex;
-  gap: 2px;
-  align-items: center;
 }
 
 /* === About section (in Settings) === */

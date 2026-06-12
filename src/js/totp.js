@@ -33,15 +33,17 @@ export async function refreshCodes(invoke, locked, secondsRemaining, updateBarsF
 }
 
 /**
- * Update the countdown progress bars and timer labels.
+ * Update the countdown rings and timer labels.
  */
 export function updateBars(accounts, secondsRemaining) {
   accounts.forEach((a) => {
     const remaining = secondsRemaining[a.id] || a.period;
-    const pct = ((a.period - remaining) / a.period) * 100;
-    const fill = document.querySelector(`.card-bar-fill[data-id="${a.id}"]`);
+    const elapsed = a.period - remaining;
+    const circumference = 50.265; // 2 * π * 8
+    const offset = (elapsed / a.period) * circumference;
+    const ring = document.querySelector(`.ring-fg[data-id="${a.id}"]`);
     const timer = document.querySelector(`.card-timer[data-id="${a.id}"]`);
-    if (fill) fill.style.width = `${pct}%`;
+    if (ring) ring.style.strokeDashoffset = offset;
     if (timer) timer.textContent = `${Math.max(0, remaining)}s`;
   });
 }

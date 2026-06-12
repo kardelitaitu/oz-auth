@@ -29,17 +29,25 @@ export function renderAccounts(accounts, accountListEl, callbacks) {
     card.dataset.id = a.id;
     card.draggable = true;
     card.innerHTML = `
-      <div class="card-header">
+      <div class="card-row1">
         <span class="card-issuer">${escapeHtml(a.issuer)}</span>
-        <div class="card-header-buttons" draggable="false">
+        <div class="card-row1-right" draggable="false">
+          <span class="card-code" data-id="${a.id}">------</span>
+          <svg class="card-ring" viewBox="0 0 20 20" width="16" height="16" data-id="${a.id}">
+            <circle cx="10" cy="10" r="8" fill="none" class="ring-bg"/>
+            <circle cx="10" cy="10" r="8" fill="none" class="ring-fg"
+              data-id="${a.id}"
+              stroke-dasharray="50.265" stroke-dashoffset="50.265"
+              transform="rotate(-90 10 10)"/>
+          </svg>
           <button class="card-edit" title="Edit" data-id="${a.id}" draggable="false">✎</button>
           <button class="card-delete" title="Delete" draggable="false">×</button>
         </div>
       </div>
-      <div class="card-label">${escapeHtml(a.label)}</div>
-      <div class="card-code" data-id="${a.id}" draggable="false">------</div>
-      <div class="card-bar"><div class="card-bar-fill" data-id="${a.id}"></div></div>
-      <div class="card-timer" data-id="${a.id}">--s</div>
+      <div class="card-row2">
+        <span class="card-label">${escapeHtml(a.label)}</span>
+        <span class="card-timer" data-id="${a.id}">--s</span>
+      </div>
     `;
 
     // Click to copy
