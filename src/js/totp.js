@@ -33,17 +33,38 @@ export async function refreshCodes(invoke, locked, secondsRemaining, updateBarsF
 }
 
 /**
- * Update the countdown rings and timer labels.
+ * Map remaining time ratio to a status color.
+ */
+function getRingColor(pctRemaining) {
+  if (pctRemaining > 0.5) return '#5dade2';   // blue (50–100%)
+  if (pctRemaining > 0.25) return '#e67e22';  // orange (25–50%)
+  return '#e81123';                              // red (<25%)
+}
+
+/**
+ * Update the countdown rings (stroke offset + color) and text labels.
  */
 export function updateBars(accounts, secondsRemaining) {
   accounts.forEach((a) => {
     const remaining = secondsRemaining[a.id] || a.period;
     const elapsed = a.period - remaining;
-    const circumference = 50.265; // 2 * π * 8
+    const pctRemaining = remaining / a.period;
+    const circumference = 56.549; // 2 * π * 9
     const offset = (elapsed / a.period) * circumference;
+    const color = getRingColor(pctRemaining);
+
     const ring = document.querySelector(`.ring-fg[data-id="${a.id}"]`);
+    const ringText = document.querySelector(`.ring-text[data-id="${a.id}"]`);
     const timer = document.querySelector(`.card-timer[data-id="${a.id}"]`);
-    if (ring) ring.style.strokeDashoffset = offset;
+
+    if (ring) {
+      ring.style.strokeDashoffset = offset;
+      ring.style.stroke = color;
+    }
+    if (ringText) {
+      ringText.textContent = Math.max(0, remaining);
+      ringText.style.fill = color;
+    }
     if (timer) timer.textContent = `${Math.max(0, remaining)}s`;
   });
 }

@@ -33,12 +33,13 @@ export function renderAccounts(accounts, accountListEl, callbacks) {
         <span class="card-issuer">${escapeHtml(a.issuer)}</span>
         <div class="card-row1-right" draggable="false">
           <span class="card-code" data-id="${a.id}">------</span>
-          <svg class="card-ring" viewBox="0 0 20 20" width="16" height="16" data-id="${a.id}">
-            <circle cx="10" cy="10" r="8" fill="none" class="ring-bg"/>
-            <circle cx="10" cy="10" r="8" fill="none" class="ring-fg"
+          <svg class="card-ring" viewBox="0 0 24 24" width="24" height="24" data-id="${a.id}">
+            <circle cx="12" cy="12" r="9" fill="none" class="ring-bg"/>
+            <circle cx="12" cy="12" r="9" fill="none" class="ring-fg"
               data-id="${a.id}"
-              stroke-dasharray="50.265" stroke-dashoffset="50.265"
-              transform="rotate(-90 10 10)"/>
+              stroke-dasharray="56.549" stroke-dashoffset="56.549"
+              transform="rotate(-90 12 12)"/>
+            <text x="12" y="12" data-id="${a.id}" class="ring-text">--</text>
           </svg>
           <button class="card-edit" title="Edit" data-id="${a.id}" draggable="false">✎</button>
           <button class="card-delete" title="Delete" draggable="false">×</button>
