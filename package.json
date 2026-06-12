@@ -13,6 +13,8 @@
     "@tauri-apps/api": "^2.0.0"
   },
   "devDependencies": {
+    "eslint": "^10.4.1",
+    "globals": "^17.6.0",
     "vite": "^6.3.0"
   }
 }

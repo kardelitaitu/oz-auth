@@ -134,6 +134,74 @@ fn save_config(cfg: crate::config::Config) -> Result<(), String> {
     crate::storage::save(&data)
 }
 
+// ── App entry ────────────────────────────────────────────────
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    crate::diagnostics::init();
+    let _ = crate::paths::verify();
+
+    if crate::storage::exists() {
+        let data = crate::storage::load();
+        crate::diagnostics::restore_from_log_str(&data.log);
+    }
+
+    tauri::Builder::default()
+        .manage(AppState {
+            encryption_key: Mutex::new(None),
+        })
+        .manage(tray::TrayState::<tauri::Wry>::new())
+        .setup(|app| {
+            let data = crate::storage::load();
+            let cfg = data.config;
+            let exe_name = crate::paths::exe_stem();
+
+            if let Some(window) = app.get_webview_window("main") {
+                if crate::storage::exists() {
+                    let _ = window.set_position(tauri::PhysicalPosition::new(cfg.left, cfg.top));
+                    let _ = window.set_size(tauri::PhysicalSize::new(cfg.width, cfg.height));
+                } else {
+                    let _ = window.set_size(tauri::PhysicalSize::new(cfg.width, cfg.height));
+                    let _ = window.center();
+                }
+                let _ = window.set_always_on_top(cfg.always_on_top);
+                let _ = window.set_min_size(Some(tauri::PhysicalSize::new(420, 640)));
+                #[cfg(windows)]
+                let _ = window.set_background_color(Some(Color(30, 30, 30, 255)));
+                let _ = window.show();
+                let _ = window.set_focus();
+                let _ = window.set_title(&exe_name);
+            }
+
+            let _ = tray::build(app.handle(), &exe_name);
+
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            get_app_name,
+            get_app_version,
+            load_config,
+            save_config,
+            update_tray_icon,
+            commands::totp::generate_code,
+            commands::totp::generate_all_codes,
+            commands::accounts::add_account,
+            commands::accounts::add_account_from_uri,
+            commands::accounts::remove_account,
+            commands::accounts::update_account,
+            commands::accounts::list_accounts,
+            commands::auth::set_lock,
+            commands::auth::unlock,
+            commands::auth::lock,
+            commands::auth::is_locked,
+            commands::auth::change_pin,
+            commands::auth::export_backup,
+            commands::auth::import_backup,
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -263,72 +331,4 @@ mod tests {
 
     // get_app_version takes tauri::AppHandle — cannot be called in unit tests.
     // It is compilation-verified via the invoke_handler registration in run().
-}
-
-// ── App entry ────────────────────────────────────────────────
-
-#[cfg_attr(mobile, tauri::mobile_entry_point)]
-pub fn run() {
-    crate::diagnostics::init();
-    let _ = crate::paths::verify();
-
-    if crate::storage::exists() {
-        let data = crate::storage::load();
-        crate::diagnostics::restore_from_log_str(&data.log);
-    }
-
-    tauri::Builder::default()
-        .manage(AppState {
-            encryption_key: Mutex::new(None),
-        })
-        .manage(tray::TrayState::<tauri::Wry>::new())
-        .setup(|app| {
-            let data = crate::storage::load();
-            let cfg = data.config;
-            let exe_name = crate::paths::exe_stem();
-
-            if let Some(window) = app.get_webview_window("main") {
-                if crate::storage::exists() {
-                    let _ = window.set_position(tauri::PhysicalPosition::new(cfg.left, cfg.top));
-                    let _ = window.set_size(tauri::PhysicalSize::new(cfg.width, cfg.height));
-                } else {
-                    let _ = window.set_size(tauri::PhysicalSize::new(cfg.width, cfg.height));
-                    let _ = window.center();
-                }
-                let _ = window.set_always_on_top(cfg.always_on_top);
-                let _ = window.set_min_size(Some(tauri::PhysicalSize::new(420, 640)));
-                #[cfg(windows)]
-                let _ = window.set_background_color(Some(Color(30, 30, 30, 255)));
-                let _ = window.show();
-                let _ = window.set_focus();
-                let _ = window.set_title(&exe_name);
-            }
-
-            let _ = tray::build(app.handle(), &exe_name);
-
-            Ok(())
-        })
-        .invoke_handler(tauri::generate_handler![
-            get_app_name,
-            get_app_version,
-            load_config,
-            save_config,
-            update_tray_icon,
-            commands::totp::generate_code,
-            commands::totp::generate_all_codes,
-            commands::accounts::add_account,
-            commands::accounts::add_account_from_uri,
-            commands::accounts::remove_account,
-            commands::accounts::update_account,
-            commands::accounts::list_accounts,
-            commands::auth::set_lock,
-            commands::auth::unlock,
-            commands::auth::lock,
-            commands::auth::is_locked,
-            commands::auth::change_pin,
-            commands::auth::export_backup,
-            commands::auth::import_backup,
-        ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
 }

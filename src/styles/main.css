@@ -172,7 +172,7 @@ body.theme-dark, body:not(.theme-light) {
 }
 
 #btn-settings:hover svg {
-  animation: spin 0.5s linear infinite;
+  animation: shake 0.6s ease-in-out infinite;
 }
 
 #btn-theme:hover svg {
@@ -196,10 +196,12 @@ body.theme-dark, body:not(.theme-light) {
   animation: bounce 0.8s ease-in-out infinite;
 }
 
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
+@keyframes shake {
+  0%, 100% { transform: rotate(0deg); }
+  20% { transform: rotate(-15deg); }
+  40% { transform: rotate(15deg); }
+  60% { transform: rotate(-10deg); }
+  80% { transform: rotate(10deg); }
 }
 
 @keyframes pulse {
@@ -688,20 +690,11 @@ body.theme-dark, body:not(.theme-light) {
   gap: 8px;
   max-height: 440px;
   overflow-y: auto;
-  scrollbar-width: thin;
+  scrollbar-width: none;
 }
 
 #settings-body::-webkit-scrollbar {
-  width: 4px;
-}
-
-#settings-body::-webkit-scrollbar-thumb {
-  background: var(--scroll-thumb);
-  border-radius: 2px;
-}
-
-#settings-body::-webkit-scrollbar-thumb:hover {
-  background: var(--scroll-thumb-hover);
+  display: none;
 }
 
 .settings-section {
