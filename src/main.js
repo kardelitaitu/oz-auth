@@ -40,6 +40,10 @@ const settingsTitle = document.getElementById("settings-title");
 const settingsBody = document.getElementById("settings-body");
 const settingsCancel = document.getElementById("settings-cancel");
 const contextMenu = document.getElementById("context-menu");
+const deleteConfirmOverlay = document.getElementById("delete-confirm-overlay");
+const deleteConfirmMsg = document.getElementById("delete-confirm-msg");
+const deleteConfirmSubmit = document.getElementById("delete-confirm-submit");
+const deleteConfirmCancel = document.getElementById("delete-confirm-cancel");
 
 // ── Shared state ───────────────────────────────────────────
 const accounts = [];
@@ -76,13 +80,15 @@ async function loadAccounts(query = "") {
     renderAccounts(accounts, accountList, {
       onCopy: (id) => clipboard.copy(id),
       onEdit: (id) => accountDialog.openEdit(id),
-      onDelete: (id) => deleteAccount(id),
+      onDelete: (id) => confirmDeleteAccount(id),
       onContextMenu: showContextMenu,
     });
   } catch (e) {
     console.error("list_accounts error:", e);
   }
 }
+
+let pendingDeleteId = null;
 
 async function deleteAccount(id) {
   if (lock.getLocked()) return;
@@ -96,6 +102,28 @@ async function deleteAccount(id) {
     toast("Delete failed", true);
   }
 }
+
+function confirmDeleteAccount(id) {
+  const account = accounts.find((a) => a.id === id);
+  if (!account) return;
+  pendingDeleteId = id;
+  deleteConfirmMsg.textContent = `\u201c${account.issuer} \u2014 ${account.label}\u201d will be permanently removed.`;
+  deleteConfirmOverlay.classList.remove("hidden");
+  deleteConfirmSubmit.focus();
+}
+
+deleteConfirmSubmit.addEventListener("click", async () => {
+  deleteConfirmOverlay.classList.add("hidden");
+  if (pendingDeleteId) {
+    await deleteAccount(pendingDeleteId);
+    pendingDeleteId = null;
+  }
+});
+
+deleteConfirmCancel.addEventListener("click", () => {
+  deleteConfirmOverlay.classList.add("hidden");
+  pendingDeleteId = null;
+});
 
 function reloadAccountsAndCodes() {
   loadAccounts().then(() => {
@@ -149,7 +177,7 @@ contextMenu.querySelector('[data-action="edit"]').addEventListener("click", () =
 });
 
 contextMenu.querySelector('[data-action="delete"]').addEventListener("click", () => {
-  if (contextAccountId) deleteAccount(contextAccountId);
+  if (contextAccountId) confirmDeleteAccount(contextAccountId);
   hideContextMenu();
 });
 
@@ -171,13 +199,14 @@ async function onReorder(srcId, targetId) {
   } catch (e) {
     toast("Reorder failed — reloading", true);
     await loadAccounts();
+    refreshCodes(invoke, lock.getLocked(), secondsRemaining, () => updateBars(accounts, secondsRemaining), toast);
     return;
   }
 
   renderAccounts(accounts, accountList, {
     onCopy: (id) => clipboard.copy(id),
     onEdit: (id) => accountDialog.openEdit(id),
-    onDelete: (id) => deleteAccount(id),
+    onDelete: (id) => confirmDeleteAccount(id),
     onContextMenu: showContextMenu,
   });
   refreshCodes(invoke, lock.getLocked(), secondsRemaining, () => updateBars(accounts, secondsRemaining), toast);
@@ -404,6 +433,8 @@ document.addEventListener("keydown", async (e) => {
     dialog.classList.add("hidden");
     qrOverlay.classList.add("hidden");
     settingsOverlay.classList.add("hidden");
+    deleteConfirmOverlay.classList.add("hidden");
+    pendingDeleteId = null;
     hideContextMenu();
     stopCamera();
     searchInput.blur();

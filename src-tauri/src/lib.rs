@@ -278,6 +278,7 @@ pub fn run() {
                     let _ = window.center();
                 }
                 let _ = window.set_always_on_top(cfg.always_on_top);
+                let _ = window.set_min_size(Some(tauri::PhysicalSize::new(420, 640)));
                 #[cfg(windows)]
                 let _ = window.set_background_color(Some(Color(30, 30, 30, 255)));
                 let _ = window.show();

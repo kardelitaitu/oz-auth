@@ -114,6 +114,18 @@
         <div class="ctx-item ctx-delete" data-action="delete">✕ Delete</div>
       </div>
 
+      <!-- Delete confirmation overlay -->
+      <div id="delete-confirm-overlay" class="hidden">
+        <div id="delete-confirm-card">
+          <h2 id="delete-confirm-title">Delete account?</h2>
+          <p id="delete-confirm-msg">This action cannot be undone.</p>
+          <div class="dialog-actions">
+            <button id="delete-confirm-cancel">Cancel</button>
+            <button id="delete-confirm-submit">Delete</button>
+          </div>
+        </div>
+      </div>
+
       <!-- QR Scanner overlay -->
       <div id="qr-overlay" class="hidden">
         <div id="qr-card">

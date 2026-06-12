@@ -86,9 +86,6 @@ export function openSettings(config) {
 
     html += `
       <div class="settings-section settings-about">
-        <div class="about-icon">
-          <img src="/icon.png" alt="oz-auth icon" width="64" height="64" />
-        </div>
         <div class="about-name">${appName}</div>
         <div class="about-version">v${appVersion}</div>
         <div class="about-credits">
