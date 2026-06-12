@@ -97,7 +97,10 @@ async function loadAccounts(query = "") {
 let pendingDeleteId = null;
 
 async function deleteAccount(id) {
-  if (lock.getLocked()) return;
+  if (lock.getLocked()) {
+    toast("App is locked", true);
+    return;
+  }
   try {
     await invoke("remove_account", { accountId: id });
     toast("Account deleted");
@@ -153,6 +156,7 @@ const accountDialog = setupAccountDialog({
   btnAdd,
   toast,
   getAccounts: () => accounts,
+  isLocked: () => lock.getLocked(),
   onAccountsChanged: reloadAccountsAndCodes,
 });
 
@@ -216,6 +220,7 @@ contextMenu.querySelector('[data-action="delete"]').addEventListener("click", ()
 
 // ── Drag & drop ────────────────────────────────────────────
 async function onReorder(srcId, targetId) {
+  if (lock.getLocked()) return;
   const srcIdx = accounts.findIndex((a) => a.id === srcId);
   const tgtIdx = accounts.findIndex((a) => a.id === targetId);
   if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) return;

@@ -84,12 +84,17 @@ export function setupAccountDialog(config) {
     btnAdd,
     toast,
     getAccounts,
+    isLocked,
     onAccountsChanged,
   } = config;
 
   let editId = null;
 
   function openEditDialog(id) {
+    if (isLocked()) {
+      toast("App is locked", true);
+      return;
+    }
     const accounts = getAccounts();
     const account = accounts.find((a) => a.id === id);
     if (!account) return;
@@ -108,6 +113,10 @@ export function setupAccountDialog(config) {
   }
 
   function openAddDialog() {
+    if (isLocked()) {
+      toast("App is locked", true);
+      return;
+    }
     editId = null;
     dialogTitle.textContent = "Add Account";
     dialogIssuer.value = "";
@@ -142,6 +151,10 @@ export function setupAccountDialog(config) {
   });
 
   dialogSubmit.addEventListener("click", async () => {
+    if (isLocked()) {
+      toast("App is locked", true);
+      return;
+    }
     const issuer = dialogIssuer.value.trim();
     const label = dialogLabel.value.trim();
     const secret = dialogSecret.value.trim();
