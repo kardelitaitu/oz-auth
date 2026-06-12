@@ -236,17 +236,17 @@ body.theme-dark, body:not(.theme-light) {
 
 .card-drag-handle span {
   display: block;
-  width: 14px;
-  height: 2px;
-  border-radius: 1px;
+  width: 16px;
+  height: 3px;
+  border-radius: 2px;
   background: var(--btn-color);
-  opacity: 0.45;
+  opacity: 0.7;
   transition: opacity 0.15s;
 }
 
 .card-drag-handle:hover span,
 .card-drag-handle:active span {
-  opacity: 0.8;
+  opacity: 1;
 }
 
 .card-drag-handle:active {
@@ -273,12 +273,6 @@ body.theme-dark, body:not(.theme-light) {
   border-style: dashed;
   box-shadow: 0 0 0 2px var(--code-color);
   transform: scale(1.02);
-}
-
-.card-main-row {
-  display: flex;
-  align-items: center;
-  gap: 0;
 }
 
 .card-col-1 {
