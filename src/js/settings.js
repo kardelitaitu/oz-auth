@@ -10,6 +10,7 @@ export function openSettings(config) {
   const {
     invoke,
     toast,
+    isLocked,
     onPinSet,
     onLockNow,
     onClipboardClearSecondsChanged,
@@ -155,6 +156,10 @@ export function openSettings(config) {
 
     // ── Backup all keys ──────────────────────────────
     document.getElementById("backup-keys-btn").addEventListener("click", () => {
+      if (isLocked()) {
+        toast("App is locked", true);
+        return;
+      }
       backupPinInput.value = "";
       backupConfirmError.classList.add("hidden");
       // Show/hide PIN input based on whether PIN is set
@@ -173,6 +178,10 @@ export function openSettings(config) {
     });
 
     backupConfirmSubmit.addEventListener("click", async () => {
+      if (isLocked()) {
+        toast("App is locked", true);
+        return;
+      }
       if (hasPin) {
         const pin = backupPinInput.value;
         if (!pin) {

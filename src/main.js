@@ -187,6 +187,11 @@ contextMenu.querySelector('[data-action="edit"]').addEventListener("click", () =
 
 contextMenu.querySelector('[data-action="qr"]').addEventListener("click", async () => {
   if (!contextAccountId) return;
+  if (lock.getLocked()) {
+    toast("App is locked", true);
+    hideContextMenu();
+    return;
+  }
   const accountId = contextAccountId;
   const account = accounts.find((a) => a.id === accountId);
   hideContextMenu();
@@ -336,6 +341,7 @@ btnSettings.addEventListener("click", () => {
   openSettings({
     invoke,
     toast,
+    isLocked: () => lock.getLocked(),
     onPinSet: () => {
       passwordProtected = true;
       startAutoLock();
