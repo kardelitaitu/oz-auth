@@ -97,10 +97,7 @@ mod tests {
                 updated_at: chrono::Utc::now(),
             };
             let summary = AccountSummary::from(&account);
-            assert_eq!(
-                format!("{:?}", summary.algorithm),
-                format!("{:?}", algo)
-            );
+            assert_eq!(format!("{:?}", summary.algorithm), format!("{:?}", algo));
         }
     }
 

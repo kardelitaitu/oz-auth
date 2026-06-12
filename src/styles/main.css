@@ -636,6 +636,8 @@ body.theme-dark, body:not(.theme-light) {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  max-height: 400px;
+  overflow-y: auto;
 }
 
 .settings-section {

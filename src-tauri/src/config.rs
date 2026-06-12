@@ -103,7 +103,10 @@ mod tests {
     fn test_clipboard_clear_seconds_range() {
         // Config doesn't enforce range in Rust — that's a frontend concern.
         // But we test that any u32 value round-trips.
-        let cfg = Config { clipboard_clear_seconds: 300, ..Config::default() };
+        let cfg = Config {
+            clipboard_clear_seconds: 300,
+            ..Config::default()
+        };
         let json = serde_json::to_string(&cfg).unwrap();
         let restored: Config = serde_json::from_str(&json).unwrap();
         assert_eq!(restored.clipboard_clear_seconds, 300);

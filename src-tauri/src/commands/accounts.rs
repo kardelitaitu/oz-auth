@@ -100,7 +100,10 @@ mod tests {
     fn test_decode_secret_too_short() {
         // GEZDGNBVGY3TQOJQ (RFC 6238) decodes to 10 bytes (80 bits) — rejected
         let err = decode_secret("GEZDGNBVGY3TQOJQ").unwrap_err();
-        assert!(err.contains("too short"), "must reject secrets < 128 bits: {err}");
+        assert!(
+            err.contains("too short"),
+            "must reject secrets < 128 bits: {err}"
+        );
         assert!(err.contains("80 bits"), "should mention bit count: {err}");
     }
 
@@ -128,10 +131,16 @@ mod tests {
             cleanup_auth_file();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
-                id: "a1".into(), issuer: "Test".into(), label: "x".into(),
-                algorithm: Algorithm::SHA1, digits: 6, period: 30,
-                secret: vec![1, 2, 3], sort_order: 0,
-                created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                id: "a1".into(),
+                issuer: "Test".into(),
+                label: "x".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1, 2, 3],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
             }];
             save_accounts(&mut data, &accounts, None).unwrap();
             crate::storage::save(&data).unwrap();
@@ -141,7 +150,9 @@ mod tests {
             let mut reloaded = crate::storage::load_accounts(&loaded, None).unwrap();
             assert_eq!(reloaded.len(), 1);
             assert_eq!(reloaded[0].issuer, "Test");
-            for a in &mut reloaded { a.secret.zeroize(); }
+            for a in &mut reloaded {
+                a.secret.zeroize();
+            }
             reloaded.clear();
             cleanup_auth_file();
         });
@@ -154,10 +165,16 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.config.password_protected = true;
             let accounts = vec![Account {
-                id: "enc1".into(), issuer: "Enc".into(), label: "e".into(),
-                algorithm: Algorithm::SHA256, digits: 8, period: 60,
-                secret: vec![9, 8, 7], sort_order: 0,
-                created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                id: "enc1".into(),
+                issuer: "Enc".into(),
+                label: "e".into(),
+                algorithm: Algorithm::SHA256,
+                digits: 8,
+                period: 60,
+                secret: vec![9, 8, 7],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
             }];
             let key = test_key();
             save_accounts(&mut data, &accounts, Some(key)).unwrap();
@@ -168,7 +185,9 @@ mod tests {
             let mut reloaded = crate::storage::load_accounts(&loaded, Some(key)).unwrap();
             assert_eq!(reloaded.len(), 1);
             assert_eq!(reloaded[0].issuer, "Enc");
-            for a in &mut reloaded { a.secret.zeroize(); }
+            for a in &mut reloaded {
+                a.secret.zeroize();
+            }
             reloaded.clear();
             cleanup_auth_file();
         });
@@ -189,10 +208,16 @@ mod tests {
     #[test]
     fn test_zeroize_accounts_clears_secrets() {
         let mut accounts = vec![Account {
-            id: "z".into(), issuer: "Z".into(), label: "z".into(),
-            algorithm: Algorithm::SHA1, digits: 6, period: 30,
-            secret: vec![1, 2, 3, 4], sort_order: 0,
-            created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+            id: "z".into(),
+            issuer: "Z".into(),
+            label: "z".into(),
+            algorithm: Algorithm::SHA1,
+            digits: 6,
+            period: 30,
+            secret: vec![1, 2, 3, 4],
+            sort_order: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
         }];
         zeroize_accounts(&mut accounts);
         assert!(accounts.is_empty());
@@ -234,7 +259,9 @@ mod tests {
             let mut reloaded = crate::storage::load_accounts(&loaded, None).unwrap();
             assert_eq!(reloaded.len(), 1);
             assert_eq!(reloaded[0].issuer, "ACME");
-            for a in &mut reloaded { a.secret.zeroize(); }
+            for a in &mut reloaded {
+                a.secret.zeroize();
+            }
             reloaded.clear();
             cleanup_auth_file();
         });
@@ -249,16 +276,28 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![
                 Account {
-                    id: "s1".into(), issuer: "GitHub".into(), label: "dev@github.com".into(),
-                    algorithm: Algorithm::SHA1, digits: 6, period: 30,
-                    secret: vec![1], sort_order: 0,
-                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                    id: "s1".into(),
+                    issuer: "GitHub".into(),
+                    label: "dev@github.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![1],
+                    sort_order: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
                 },
                 Account {
-                    id: "s2".into(), issuer: "Google".into(), label: "user@gmail.com".into(),
-                    algorithm: Algorithm::SHA1, digits: 6, period: 30,
-                    secret: vec![2], sort_order: 1,
-                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                    id: "s2".into(),
+                    issuer: "Google".into(),
+                    label: "user@gmail.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![2],
+                    sort_order: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
                 },
             ];
             save_accounts(&mut data, &accounts, None).unwrap();
@@ -271,20 +310,29 @@ mod tests {
             let summaries: Vec<_> = reloaded.iter().map(AccountSummary::from).collect();
             // Case-insensitive: "github" should match "GitHub"
             let q = "github";
-            let filtered: Vec<_> = summaries.iter().filter(|a|
-                a.issuer.to_lowercase().contains(q) || a.label.to_lowercase().contains(q)
-            ).collect();
+            let filtered: Vec<_> = summaries
+                .iter()
+                .filter(|a| {
+                    a.issuer.to_lowercase().contains(q) || a.label.to_lowercase().contains(q)
+                })
+                .collect();
             assert_eq!(filtered.len(), 1);
             assert_eq!(filtered[0].issuer, "GitHub");
 
             // Uppercase search should also match "GitHub"
             let q = "GITHUB";
-            let filtered: Vec<_> = summaries.iter().filter(|a|
-                a.issuer.to_lowercase().contains(&q.to_lowercase()) || a.label.to_lowercase().contains(&q.to_lowercase())
-            ).collect();
+            let filtered: Vec<_> = summaries
+                .iter()
+                .filter(|a| {
+                    a.issuer.to_lowercase().contains(&q.to_lowercase())
+                        || a.label.to_lowercase().contains(&q.to_lowercase())
+                })
+                .collect();
             assert_eq!(filtered.len(), 1);
 
-            for a in &mut reloaded { a.secret.zeroize(); }
+            for a in &mut reloaded {
+                a.secret.zeroize();
+            }
             reloaded.clear();
             cleanup_auth_file();
         });
@@ -299,10 +347,16 @@ mod tests {
             // Seed one account
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
-                id: "real-id".into(), issuer: "Real".into(), label: "r".into(),
-                algorithm: Algorithm::SHA1, digits: 6, period: 30,
-                secret: vec![1, 2, 3], sort_order: 0,
-                created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                id: "real-id".into(),
+                issuer: "Real".into(),
+                label: "r".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1, 2, 3],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
             }];
             save_accounts(&mut data, &accounts, None).unwrap();
             crate::storage::save(&data).unwrap();
@@ -313,7 +367,9 @@ mod tests {
             let mut reloaded = crate::storage::load_accounts(&loaded, None).unwrap();
             let found = reloaded.iter().any(|a| a.id == "nonexistent");
             assert!(!found, "update must reject non-existent account ID");
-            for a in &mut reloaded { a.secret.zeroize(); }
+            for a in &mut reloaded {
+                a.secret.zeroize();
+            }
             reloaded.clear();
             cleanup_auth_file();
         });
@@ -327,10 +383,16 @@ mod tests {
             cleanup_auth_file();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
-                id: "keep-me".into(), issuer: "Keep".into(), label: "k".into(),
-                algorithm: Algorithm::SHA1, digits: 6, period: 30,
-                secret: vec![1, 2, 3], sort_order: 0,
-                created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                id: "keep-me".into(),
+                issuer: "Keep".into(),
+                label: "k".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1, 2, 3],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
             }];
             save_accounts(&mut data, &accounts, None).unwrap();
             crate::storage::save(&data).unwrap();
@@ -341,9 +403,15 @@ mod tests {
             let before = reloaded.len();
             reloaded.retain(|a| a.id != "nonexistent");
             // Non-existent ID → no accounts removed
-            assert_eq!(reloaded.len(), before, "removing non-existent ID is a no-op");
+            assert_eq!(
+                reloaded.len(),
+                before,
+                "removing non-existent ID is a no-op"
+            );
             assert_eq!(reloaded[0].id, "keep-me");
-            for a in &mut reloaded { a.secret.zeroize(); }
+            for a in &mut reloaded {
+                a.secret.zeroize();
+            }
             reloaded.clear();
             cleanup_auth_file();
         });
@@ -359,16 +427,28 @@ mod tests {
             // Two accounts with the same issuer + label but different IDs (UUIDs)
             let accounts = vec![
                 Account {
-                    id: "uuid-aaa".into(), issuer: "Dupe".into(), label: "same@test.com".into(),
-                    algorithm: Algorithm::SHA1, digits: 6, period: 30,
-                    secret: vec![1, 2], sort_order: 0,
-                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                    id: "uuid-aaa".into(),
+                    issuer: "Dupe".into(),
+                    label: "same@test.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![1, 2],
+                    sort_order: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
                 },
                 Account {
-                    id: "uuid-bbb".into(), issuer: "Dupe".into(), label: "same@test.com".into(),
-                    algorithm: Algorithm::SHA256, digits: 6, period: 30,
-                    secret: vec![3, 4], sort_order: 1,
-                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                    id: "uuid-bbb".into(),
+                    issuer: "Dupe".into(),
+                    label: "same@test.com".into(),
+                    algorithm: Algorithm::SHA256,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![3, 4],
+                    sort_order: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
                 },
             ];
             save_accounts(&mut data, &accounts, None).unwrap();
@@ -376,9 +456,15 @@ mod tests {
 
             let loaded = crate::storage::try_load().unwrap();
             let mut reloaded = crate::storage::load_accounts(&loaded, None).unwrap();
-            assert_eq!(reloaded.len(), 2, "duplicate issuer+label allowed (different IDs)");
+            assert_eq!(
+                reloaded.len(),
+                2,
+                "duplicate issuer+label allowed (different IDs)"
+            );
             assert_ne!(reloaded[0].id, reloaded[1].id, "IDs must be distinct");
-            for a in &mut reloaded { a.secret.zeroize(); }
+            for a in &mut reloaded {
+                a.secret.zeroize();
+            }
             reloaded.clear();
             cleanup_auth_file();
         });
@@ -393,16 +479,28 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             let mut accounts = vec![
                 Account {
-                    id: "first".into(), issuer: "A".into(), label: "a".into(),
-                    algorithm: Algorithm::SHA1, digits: 6, period: 30,
-                    secret: vec![1], sort_order: 0,
-                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                    id: "first".into(),
+                    issuer: "A".into(),
+                    label: "a".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![1],
+                    sort_order: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
                 },
                 Account {
-                    id: "second".into(), issuer: "B".into(), label: "b".into(),
-                    algorithm: Algorithm::SHA1, digits: 6, period: 30,
-                    secret: vec![2], sort_order: 1,
-                    created_at: chrono::Utc::now(), updated_at: chrono::Utc::now(),
+                    id: "second".into(),
+                    issuer: "B".into(),
+                    label: "b".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![2],
+                    sort_order: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
                 },
             ];
             // Reorder: swap first and second
@@ -417,7 +515,9 @@ mod tests {
             reloaded.sort_by_key(|a| a.sort_order);
             assert_eq!(reloaded[0].id, "second");
             assert_eq!(reloaded[1].id, "first");
-            for a in &mut reloaded { a.secret.zeroize(); }
+            for a in &mut reloaded {
+                a.secret.zeroize();
+            }
             reloaded.clear();
             cleanup_auth_file();
         });

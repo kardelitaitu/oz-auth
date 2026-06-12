@@ -32,10 +32,7 @@ fn current_timestamp() -> u64 {
 }
 
 /// Core logic for generate_code — takes &AppState so it's testable without Tauri.
-fn generate_code_impl(
-    account_id: &str,
-    state: &AppState,
-) -> Result<(String, u32), String> {
+fn generate_code_impl(account_id: &str, state: &AppState) -> Result<(String, u32), String> {
     let data = try_load()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
@@ -73,9 +70,7 @@ pub fn generate_code(
 }
 
 /// Core logic for generate_all_codes — takes &AppState so it's testable without Tauri.
-fn generate_all_codes_impl(
-    state: &AppState,
-) -> Result<Vec<(String, String, u32)>, String> {
+fn generate_all_codes_impl(state: &AppState) -> Result<Vec<(String, String, u32)>, String> {
     let data = try_load()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
@@ -133,7 +128,9 @@ mod tests {
     }
 
     fn test_app_state() -> AppState {
-        AppState { encryption_key: std::sync::Mutex::new(None) }
+        AppState {
+            encryption_key: std::sync::Mutex::new(None),
+        }
     }
 
     fn cleanup_auth_file() {
@@ -273,7 +270,11 @@ mod tests {
         let account = test_account(secret, Algorithm::SHA1, 6);
         let totp = make_totp(&account).unwrap();
         // At t=29 and t=30, the code SHOULD be different (30s period)
-        assert_ne!(totp.generate(29), totp.generate(30), "code must roll at period boundary");
+        assert_ne!(
+            totp.generate(29),
+            totp.generate(30),
+            "code must roll at period boundary"
+        );
         // But t=0 and t=29 should be same (same counter 0)
         assert_eq!(totp.generate(0), totp.generate(29));
     }
@@ -298,7 +299,10 @@ mod tests {
             let (code, remaining) = generate_code_impl("test-1", &state).unwrap();
 
             assert_eq!(code.len(), 6, "6-digit code expected");
-            assert!(code.chars().all(|c| c.is_ascii_digit()), "code must be all digits");
+            assert!(
+                code.chars().all(|c| c.is_ascii_digit()),
+                "code must be all digits"
+            );
             assert!(remaining > 0 && remaining <= 30, "remaining in (0, 30]");
             cleanup_auth_file();
         });
@@ -333,7 +337,10 @@ mod tests {
 
             let result = generate_code_impl("test-1", &state);
             assert!(result.is_err(), "should fail when locked");
-            assert!(result.unwrap_err().contains("locked"), "error should mention locked");
+            assert!(
+                result.unwrap_err().contains("locked"),
+                "error should mention locked"
+            );
             cleanup_auth_file();
         });
     }
@@ -348,7 +355,10 @@ mod tests {
 
             let result = generate_code_impl("nonexistent-id", &state);
             assert!(result.is_err(), "should fail for missing account");
-            assert!(result.unwrap_err().contains("not found"), "error should mention not found");
+            assert!(
+                result.unwrap_err().contains("not found"),
+                "error should mention not found"
+            );
             cleanup_auth_file();
         });
     }
@@ -377,7 +387,11 @@ mod tests {
             seed_plaintext_accounts(&[test_account(secret, Algorithm::SHA512, 8)]);
 
             let (code, remaining) = generate_code_impl("test-1", &state).unwrap();
-            assert_eq!(code.len(), 8, "8-digit code expected for SHA-512 with digits=8");
+            assert_eq!(
+                code.len(),
+                8,
+                "8-digit code expected for SHA-512 with digits=8"
+            );
             assert!(code.chars().all(|c| c.is_ascii_digit()));
             assert!(remaining < 30);
             cleanup_auth_file();
@@ -439,8 +453,14 @@ mod tests {
 
             let results = generate_all_codes_impl(&state).unwrap();
             assert_eq!(results.len(), 2, "should return 2 results");
-            assert_eq!(results[0].0, "id-a", "first result should be id-a (sort_order 0)");
-            assert_eq!(results[1].0, "id-b", "second result should be id-b (sort_order 1)");
+            assert_eq!(
+                results[0].0, "id-a",
+                "first result should be id-a (sort_order 0)"
+            );
+            assert_eq!(
+                results[1].0, "id-b",
+                "second result should be id-b (sort_order 1)"
+            );
             for (_id, code, remaining) in &results {
                 assert_eq!(code.len(), 6, "each code should be 6 digits");
                 assert!(code.chars().all(|c| c.is_ascii_digit()));
@@ -516,7 +536,11 @@ mod tests {
             a1.id = "sha1-acct".into();
             let mut a2 = test_account(b"12345678901234567890123456789012", Algorithm::SHA256, 6);
             a2.id = "sha256-acct".into();
-            let mut a3 = test_account(b"1234567890123456789012345678901234567890123456789012345678901234", Algorithm::SHA512, 6);
+            let mut a3 = test_account(
+                b"1234567890123456789012345678901234567890123456789012345678901234",
+                Algorithm::SHA512,
+                6,
+            );
             a3.id = "sha512-acct".into();
             seed_plaintext_accounts(&[a1, a2, a3]);
 
@@ -585,7 +609,10 @@ mod tests {
             let result = generate_code_impl("test-1", &state);
             assert!(result.is_err(), "empty secret must produce an error");
             let err = result.unwrap_err();
-            assert!(err.contains("too short"), "error should mention too short: {err}");
+            assert!(
+                err.contains("too short"),
+                "error should mention too short: {err}"
+            );
             cleanup_auth_file();
         });
     }
@@ -624,9 +651,15 @@ mod tests {
 
             let result = generate_all_codes_impl(&state);
             // The batch fails entirely because make_totp (via validate_secret_length) errors.
-            assert!(result.is_err(), "corrupted account causes entire batch to fail");
+            assert!(
+                result.is_err(),
+                "corrupted account causes entire batch to fail"
+            );
             let err = result.unwrap_err();
-            assert!(err.contains("too short"), "error should mention too short: {err}");
+            assert!(
+                err.contains("too short"),
+                "error should mention too short: {err}"
+            );
             cleanup_auth_file();
         });
     }
