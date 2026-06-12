@@ -183,6 +183,15 @@ fn import_backup_impl(path: &str, state: &AppState) -> Result<(), String> {
     let _backup: crate::storage::auth_file::AuthData =
         serde_json::from_str(&raw).map_err(|e| format!("invalid backup file: {e}"))?;
 
+    // Lock guard: app must be unlocked to import a backup.
+    // Without this, an attacker could replace the .auth file on a locked
+    // machine with a PIN-less backup, bypassing PIN protection entirely.
+    // Uses is_locked_impl (not raw has_key) so non-PIN-protected apps
+    // can still import backups.
+    if is_locked_impl(state)? {
+        return Err("app is locked".to_string());
+    }
+
     let dest = crate::paths::auth_path();
     std::fs::copy(path, &dest).map_err(|e| format!("failed to import backup: {e}"))?;
     state.clear_key()?;
@@ -1197,6 +1206,37 @@ mod tests {
             let state = test_app_state();
             let result = import_backup_impl("C:\\nonexistent\\file.auth", &state);
             assert!(result.is_err(), "nonexistent path must fail");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_import_backup_impl_rejected_when_locked() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // Seed a PIN-protected auth file so is_locked_impl returns true
+            let salt = crypto::generate_salt();
+            let mut key = crypto::derive_key("mypin", &*salt).unwrap();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = hex::encode(*salt);
+            crate::storage::save(&data).unwrap();
+            key.zeroize();
+
+            // Create a valid backup file to import
+            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            let backup_data = crate::storage::try_load().unwrap();
+            std::fs::write(&backup_path, serde_json::to_string_pretty(&backup_data).unwrap()).unwrap();
+
+            // App is locked (PIN set but no key in state)
+            assert!(!state.has_key(), "app must be locked");
+            assert!(is_locked_impl(&state).unwrap(), "is_locked must return true");
+            let err = import_backup_impl(&backup_path.to_string_lossy(), &state).unwrap_err();
+            assert!(err.contains("locked"), "import must reject locked app: {err}");
+
+            let _ = std::fs::remove_file(&backup_path);
             cleanup_auth_file();
         });
     }
