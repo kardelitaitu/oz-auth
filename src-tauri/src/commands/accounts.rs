@@ -33,14 +33,10 @@ fn zeroize_accounts(accounts: &mut Vec<Account>) {
     accounts.clear();
 }
 
-/// Reject a secret shorter than 128 bits (16 bytes) — totp_rs requires it for HMAC.
+/// Reject empty secrets. totp_rs::TOTP::new_unchecked accepts any non-empty secret.
 pub(crate) fn validate_secret_length(secret: &[u8]) -> Result<(), String> {
-    if secret.len() < 16 {
-        return Err(format!(
-            "secret too short: {} bits ({} bytes), need at least 128 bits (16 bytes)",
-            secret.len() * 8,
-            secret.len()
-        ));
+    if secret.is_empty() {
+        return Err("secret cannot be empty".to_string());
     }
     Ok(())
 }
@@ -117,10 +113,10 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_secret_hex_too_short() {
-        // 20 hex chars = 10 bytes (80 bits) — rejected
-        let err = decode_secret("fb22358758f92429257e").unwrap_err();
-        assert!(err.contains("too short"), "hex short secret must be rejected: {err}");
+    fn test_decode_secret_hex_short() {
+        // 20 hex chars = 10 bytes (80 bits) — now accepted
+        let result = decode_secret("fb22358758f92429257e").unwrap();
+        assert_eq!(result.len(), 10, "should decode to 10 bytes");
     }
 
     #[test]
@@ -130,14 +126,10 @@ mod tests {
     }
 
     #[test]
-    fn test_decode_secret_too_short() {
-        // GEZDGNBVGY3TQOJQ (RFC 6238) decodes to 10 bytes (80 bits) — rejected
-        let err = decode_secret("GEZDGNBVGY3TQOJQ").unwrap_err();
-        assert!(
-            err.contains("too short"),
-            "must reject secrets < 128 bits: {err}"
-        );
-        assert!(err.contains("80 bits"), "should mention bit count: {err}");
+    fn test_decode_secret_short_base32() {
+        // GEZDGNBVGY3TQOJQ decodes to 10 bytes (80 bits) — now accepted
+        let result = decode_secret("GEZDGNBVGY3TQOJQ").unwrap();
+        assert_eq!(result.len(), 10, "should decode to 10 bytes");
     }
 
     // ── Storage-level integration tests ──────────────────────
