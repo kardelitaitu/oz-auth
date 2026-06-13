@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <img src="./screenshot-slider.svg" alt="Screenshots" />
+  <img src="./screenshots.gif" alt="Screenshots" />
 </p>
 
 
