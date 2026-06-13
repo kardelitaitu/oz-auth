@@ -500,6 +500,95 @@ mod tests {
         });
     }
 
+    #[test]
+    fn test_update_account_partial_issuer_only() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "upd".into(),
+                issuer: "OldIssuer".into(),
+                label: "keep@test.com".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1],
+                sort_order: 7,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let updated =
+                update_account_impl("upd", Some("NewIssuer"), None, None, &state).unwrap();
+            assert_eq!(updated.issuer, "NewIssuer");
+            assert_eq!(updated.label, "keep@test.com", "label must be unchanged");
+            assert_eq!(updated.sort_order, 7, "sort_order must be unchanged");
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_update_account_partial_label_only() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "upd".into(),
+                issuer: "KeepIssuer".into(),
+                label: "old@test.com".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1],
+                sort_order: 3,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let updated =
+                update_account_impl("upd", None, Some("new@test.com"), None, &state).unwrap();
+            assert_eq!(updated.issuer, "KeepIssuer", "issuer must be unchanged");
+            assert_eq!(updated.label, "new@test.com");
+            assert_eq!(updated.sort_order, 3, "sort_order must be unchanged");
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_update_account_partial_sort_order_only() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "upd".into(),
+                issuer: "KeepIssuer".into(),
+                label: "keep@test.com".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let updated = update_account_impl("upd", None, None, Some(99), &state).unwrap();
+            assert_eq!(updated.issuer, "KeepIssuer", "issuer must be unchanged");
+            assert_eq!(updated.label, "keep@test.com", "label must be unchanged");
+            assert_eq!(updated.sort_order, 99);
+            super::super::cleanup_auth_file();
+        });
+    }
+
     // ── list_accounts_impl tests ──────────────────────────────
 
     #[test]
@@ -586,7 +675,7 @@ mod tests {
     }
 
     #[test]
-    fn test_list_accounts_impl_search_no_match() {
+    fn test_list_accounts_search_no_match() {
         super::super::with_fs_lock(|| {
             super::super::cleanup_auth_file();
             let state = super::super::test_app_state();
@@ -608,6 +697,49 @@ mod tests {
 
             let results = list_accounts_impl(Some("xyzzy"), &state).unwrap();
             assert!(results.is_empty(), "no-match search must return empty");
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_list_accounts_search_by_label() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![
+                Account {
+                    id: "g1".into(),
+                    issuer: "GitHub".into(),
+                    label: "dev@github.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![1],
+                    sort_order: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+                Account {
+                    id: "g2".into(),
+                    issuer: "AcmeCorp".into(),
+                    label: "admin@acme.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![2],
+                    sort_order: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+            ];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            // Search by label, not issuer
+            let results = list_accounts_impl(Some("github.com"), &state).unwrap();
+            assert_eq!(results.len(), 1, "must match by label substring");
+            assert_eq!(results[0].id, "g1");
             super::super::cleanup_auth_file();
         });
     }
@@ -1037,6 +1169,150 @@ mod tests {
                 a.secret.zeroize();
             }
             reloaded.clear();
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    // ── Encrypted store tests ─────────────────────────────────
+
+    fn seed_encrypted_state(state: &super::super::AppState) -> zeroize::Zeroizing<[u8; 32]> {
+        let salt = crate::crypto::generate_salt();
+        let raw_key = crate::crypto::derive_key("testpin", &*salt).unwrap();
+        let key = zeroize::Zeroizing::new(raw_key);
+        let mut data = crate::storage::try_load().unwrap();
+        data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
+        data.config.password_protected = true;
+        data.config.password_salt = hex::encode(*salt);
+        crate::storage::save(&data).unwrap();
+        state.set_key(*key).unwrap();
+        key
+    }
+
+    #[test]
+    fn test_add_account_encrypted() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            seed_encrypted_state(&state);
+
+            let account = add_account_impl(
+                "EncIssuer",
+                "enc@test.com",
+                "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ",
+                None,
+                None,
+                None,
+                &state,
+            )
+            .unwrap();
+            assert_eq!(account.issuer, "EncIssuer");
+            assert_eq!(account.secret.len(), 20);
+
+            let loaded = crate::storage::try_load().unwrap();
+            assert!(loaded.accounts.encrypted, "must stay encrypted");
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_list_accounts_encrypted() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            seed_encrypted_state(&state);
+
+            add_account_impl(
+                "ListIssuer",
+                "list@test.com",
+                "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ",
+                None,
+                None,
+                None,
+                &state,
+            )
+            .unwrap();
+
+            let results = list_accounts_impl(None, &state).unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].issuer, "ListIssuer");
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_update_account_encrypted() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            seed_encrypted_state(&state);
+
+            let acct = add_account_impl(
+                "OldName",
+                "old@test.com",
+                "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ",
+                None,
+                None,
+                None,
+                &state,
+            )
+            .unwrap();
+
+            let updated =
+                update_account_impl(&acct.id, Some("NewName"), None, None, &state).unwrap();
+            assert_eq!(updated.issuer, "NewName");
+
+            let results = list_accounts_impl(None, &state).unwrap();
+            assert_eq!(results[0].issuer, "NewName");
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_remove_account_encrypted() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            seed_encrypted_state(&state);
+
+            let acct = add_account_impl(
+                "ToRemove",
+                "rm@test.com",
+                "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ",
+                None,
+                None,
+                None,
+                &state,
+            )
+            .unwrap();
+
+            remove_account_impl(&acct.id, &state).unwrap();
+
+            let results = list_accounts_impl(None, &state).unwrap();
+            assert!(results.is_empty(), "account must be removed");
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_list_accounts_search_label_encrypted() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            seed_encrypted_state(&state);
+
+            add_account_impl(
+                "GitHub",
+                "dev@github.com",
+                "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ",
+                None,
+                None,
+                None,
+                &state,
+            )
+            .unwrap();
+
+            let results = list_accounts_impl(Some("github.com"), &state).unwrap();
+            assert_eq!(results.len(), 1, "must find by label in encrypted store");
             super::super::cleanup_auth_file();
         });
     }

@@ -28,7 +28,6 @@ pub fn init() {
         eprintln!("{}", report);
         prev(info);
     }));
-
 }
 
 /// Append a major event to the in-memory log buffer and audit trail.
@@ -101,7 +100,10 @@ mod tests {
         with_log_lock(|| {
             init();
             let log = flush_to_log_str();
-            assert!(log.is_empty(), "init() should no longer push a startup event");
+            assert!(
+                log.is_empty(),
+                "init() should no longer push a startup event"
+            );
         });
     }
 

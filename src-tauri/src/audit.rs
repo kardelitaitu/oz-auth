@@ -55,9 +55,7 @@ pub fn compute_hash(entry: &AuditEntry) -> String {
 /// Append an event to the in-memory audit trail.
 /// The new entry includes a prev_hash linking back to the previous entry.
 pub fn push(cat: &str, msg: &str) {
-    let mut guard = AUDIT_TRAIL
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut guard = AUDIT_TRAIL.lock().unwrap_or_else(|e| e.into_inner());
     let trail = guard.get_or_insert_with(Vec::new);
     let seq = trail.len() as u64;
     let ts = std::time::SystemTime::now()
@@ -83,9 +81,7 @@ pub fn push(cat: &str, msg: &str) {
 /// Truncates to the most recent ~1000 entries if the trail is oversized,
 /// discarding oldest entries while keeping the chain intact.
 pub fn flush() -> String {
-    let mut guard = AUDIT_TRAIL
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut guard = AUDIT_TRAIL.lock().unwrap_or_else(|e| e.into_inner());
     let trail = guard.take().unwrap_or_default();
     if trail.is_empty() {
         return String::new();
@@ -123,18 +119,14 @@ pub fn restore(json: &str) {
     };
     match verify_chain(&trail) {
         Ok(()) => {
-            let mut guard = AUDIT_TRAIL
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let mut guard = AUDIT_TRAIL.lock().unwrap_or_else(|e| e.into_inner());
             *guard = Some(trail);
         }
         Err(e) => {
             crate::diagnostics::event("audit", &format!("audit trail integrity check FAILED: {e}"));
             // Still restore the trail so it can be inspected, but the
             // integrity failure event itself is logged.
-            let mut guard = AUDIT_TRAIL
-                .lock()
-                .unwrap_or_else(|e| e.into_inner());
+            let mut guard = AUDIT_TRAIL.lock().unwrap_or_else(|e| e.into_inner());
             *guard = Some(trail);
         }
     }
@@ -177,9 +169,7 @@ pub fn snapshot() -> Vec<AuditEntry> {
 /// Clear the in-memory audit trail (for testing).
 #[cfg(test)]
 pub fn clear() {
-    let mut guard = AUDIT_TRAIL
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
+    let mut guard = AUDIT_TRAIL.lock().unwrap_or_else(|e| e.into_inner());
     *guard = None;
 }
 

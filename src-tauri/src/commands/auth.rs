@@ -19,7 +19,8 @@ fn set_lock_impl(pin: &str, state: &AppState) -> Result<(), String> {
 
     // Parse current plaintext accounts
     let mut accounts: Vec<crate::models::account::Account> =
-        serde_json::from_str(&data.accounts.data_json).unwrap_or_default();
+        serde_json::from_str(&data.accounts.data_json)
+            .map_err(|e| format!("failed to parse plaintext accounts: {e}"))?;
 
     // Re-encrypt
     data.accounts = encrypt_accounts(&accounts, &key)?;
@@ -147,21 +148,22 @@ fn change_pin_impl(old_pin: &str, new_pin: &str, state: &AppState) -> Result<(),
 
     let new_salt = crate::crypto::generate_salt();
     let new_salt_hex = hex::encode(*new_salt);
-    let mut new_key = crate::crypto::derive_key(new_pin, &*new_salt)?;
+    let new_key = crate::crypto::derive_key(new_pin, &*new_salt)?;
     data.accounts = encrypt_accounts(&accounts, &new_key)?;
     data.config.password_salt = new_salt_hex;
     crate::storage::flush_and_save(&mut data)?;
 
-    // Zeroize the old key, account secrets, and new key after use
+    // Store the new key BEFORE zeroizing — set_key takes ownership
+    state.set_key(new_key)?;
+
+    // Zeroize the old key and account secrets after use
     old_key.zeroize();
-    new_key.zeroize();
     for a in &mut accounts {
         a.secret.zeroize();
     }
     accounts.clear();
     accounts.shrink_to_fit();
 
-    state.set_key(new_key)?;
     crate::diagnostics::event("security", "PIN changed");
 
     Ok(())
@@ -713,7 +715,10 @@ mod tests {
 
             assert!(!state.has_key(), "app is locked (no key in state)");
             let err = change_pin_impl("mypin", "newpin", &state).unwrap_err();
-            assert!(err.contains("locked"), "change_pin must reject locked app: {err}");
+            assert!(
+                err.contains("locked"),
+                "change_pin must reject locked app: {err}"
+            );
             cleanup_auth_file();
         });
     }
@@ -1079,6 +1084,30 @@ mod tests {
     }
 
     #[test]
+    fn test_set_lock_impl_malformed_json_rejects() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "{invalid json".into();
+            crate::storage::save(&data).unwrap();
+            let err = set_lock_impl("mypin", &state).unwrap_err();
+            assert!(
+                err.contains("parse") || err.contains("failed"),
+                "must reject malformed JSON: {err}"
+            );
+            // Verify data_json is unchanged (accounts not silently wiped)
+            let loaded = crate::storage::try_load().unwrap();
+            assert_eq!(loaded.accounts.data_json, "{invalid json");
+            assert!(
+                !loaded.config.password_protected,
+                "must not set password on failure"
+            );
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
     fn test_unlock_impl_wrong_pin_returns_false() {
         with_fs_lock(|| {
             cleanup_auth_file();
@@ -1178,6 +1207,35 @@ mod tests {
     }
 
     #[test]
+    fn test_change_pin_preserves_key_for_code_generation() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let key = seed_encrypted_auth();
+            state.set_key(*key).unwrap();
+            // Change PIN
+            change_pin_impl("mypin", "newpin", &state).unwrap();
+            // Verify the new key is NOT zeroed — the key must be usable
+            let key_guard = state.get_key().unwrap();
+            let key_bytes = key_guard.as_ref().expect("key should be set");
+            let all_zero = key_bytes.iter().all(|&b| b == 0);
+            assert!(!all_zero, "key must not be zeroed after PIN change");
+            // Verify unlock with new PIN works
+            let loaded = crate::storage::try_load().unwrap();
+            let salt = hex::decode(&loaded.config.password_salt).unwrap();
+            let mut derived = crate::crypto::derive_key("newpin", &salt).unwrap();
+            let result = crate::storage::decrypt_accounts(&loaded.accounts, &derived);
+            assert!(
+                result.is_ok(),
+                "new PIN must decrypt accounts: {:?}",
+                result.err()
+            );
+            derived.zeroize();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
     fn test_import_backup_impl_clears_state_key() {
         with_fs_lock(|| {
             cleanup_auth_file();
@@ -1236,13 +1294,23 @@ mod tests {
             // Create a valid backup file to import
             let backup_path = crate::paths::auth_path().with_extension("auth.backup");
             let backup_data = crate::storage::try_load().unwrap();
-            std::fs::write(&backup_path, serde_json::to_string_pretty(&backup_data).unwrap()).unwrap();
+            std::fs::write(
+                &backup_path,
+                serde_json::to_string_pretty(&backup_data).unwrap(),
+            )
+            .unwrap();
 
             // App is locked (PIN set but no key in state)
             assert!(!state.has_key(), "app must be locked");
-            assert!(is_locked_impl(&state).unwrap(), "is_locked must return true");
+            assert!(
+                is_locked_impl(&state).unwrap(),
+                "is_locked must return true"
+            );
             let err = import_backup_impl(&backup_path.to_string_lossy(), &state).unwrap_err();
-            assert!(err.contains("locked"), "import must reject locked app: {err}");
+            assert!(
+                err.contains("locked"),
+                "import must reject locked app: {err}"
+            );
 
             let _ = std::fs::remove_file(&backup_path);
             cleanup_auth_file();
@@ -1350,7 +1418,10 @@ mod tests {
     #[test]
     fn test_rate_limit_first_attempt_allowed() {
         let state = test_app_state();
-        assert!(state.check_rate_limit().is_ok(), "first attempt must be allowed");
+        assert!(
+            state.check_rate_limit().is_ok(),
+            "first attempt must be allowed"
+        );
     }
 
     #[test]
@@ -1359,7 +1430,10 @@ mod tests {
         state.record_failed_attempt();
         // Immediately after 1 failure → cooldown is 1s → must be blocked
         let remaining = state.check_rate_limit().unwrap_err();
-        assert!(remaining > 0, "cooldown must be enforced; remaining={remaining}s");
+        assert!(
+            remaining > 0,
+            "cooldown must be enforced; remaining={remaining}s"
+        );
     }
 
     #[test]
@@ -1376,10 +1450,7 @@ mod tests {
         let t1 = state.last_attempt.lock().unwrap().unwrap();
         state.record_failed_attempt();
         let t2 = state.last_attempt.lock().unwrap().unwrap();
-        assert!(
-            t2 >= t1,
-            "each failure must update the cooldown timer"
-        );
+        assert!(t2 >= t1, "each failure must update the cooldown timer");
         // Counter must still increment
         assert_eq!(*state.failed_attempts.lock().unwrap(), 2);
     }
@@ -1389,14 +1460,7 @@ mod tests {
         // Cooldown: 2^(attempts-1). Verify each tier by setting last_attempt
         // to (cooldown-1)s ago (1s remaining) and cooldown ago (allowed).
         let state = test_app_state();
-        let cases: &[(u32, u64)] = &[
-            (1, 1),
-            (2, 2),
-            (3, 4),
-            (4, 8),
-            (5, 16),
-            (6, 30),
-        ];
+        let cases: &[(u32, u64)] = &[(1, 1), (2, 2), (3, 4), (4, 8), (5, 16), (6, 30)];
         for &(attempts, cooldown) in cases {
             *state.failed_attempts.lock().unwrap() = attempts;
             // Set last_attempt to (cooldown - 1)s ago → 1s remaining
@@ -1466,7 +1530,8 @@ mod tests {
 
         state.reset_rate_limit();
         assert_eq!(
-            *state.failed_attempts.lock().unwrap(), 0,
+            *state.failed_attempts.lock().unwrap(),
+            0,
             "reset must clear counter"
         );
         assert!(
@@ -1530,7 +1595,8 @@ mod tests {
             assert!(result, "correct PIN must succeed after cooldown expires");
             assert!(state.has_key(), "key must be set after successful unlock");
             assert_eq!(
-                *state.failed_attempts.lock().unwrap(), 0,
+                *state.failed_attempts.lock().unwrap(),
+                0,
                 "rate limit counter must reset on successful unlock"
             );
             cleanup_auth_file();

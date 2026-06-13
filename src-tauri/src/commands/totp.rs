@@ -18,6 +18,11 @@ fn make_totp(account: &Account) -> Result<totp_rs::TOTP, String> {
         ));
     }
 
+    // Reject period=0 (would cause division-by-zero in remaining time calc)
+    if account.period == 0 {
+        return Err("invalid period: must be > 0".to_string());
+    }
+
     let algo = match account.algorithm {
         Algorithm::SHA1 => totp_rs::Algorithm::SHA1,
         Algorithm::SHA256 => totp_rs::Algorithm::SHA256,
@@ -736,6 +741,14 @@ mod tests {
         let secret = b"12345678901234567890";
         let account = test_account(secret, Algorithm::SHA1, 7);
         assert!(make_totp(&account).is_err(), "7 digits must be rejected");
+    }
+
+    #[test]
+    fn test_make_totp_rejects_zero_period() {
+        let secret = b"12345678901234567890";
+        let mut account = test_account(secret, Algorithm::SHA1, 6);
+        account.period = 0;
+        assert!(make_totp(&account).is_err(), "period=0 must be rejected");
     }
 
     #[test]

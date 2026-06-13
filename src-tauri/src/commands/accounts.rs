@@ -192,7 +192,10 @@ mod tests {
     #[test]
     fn test_decode_secret_hex_with_0x_prefix() {
         let err = decode_secret("0xdeadbeef").unwrap_err();
-        assert!(err.contains("invalid secret"), "0x prefix should fail: {err}");
+        assert!(
+            err.contains("invalid secret"),
+            "0x prefix should fail: {err}"
+        );
     }
 
     #[test]
@@ -206,7 +209,10 @@ mod tests {
     #[test]
     fn test_decode_secret_leading_trailing_whitespace() {
         let result = decode_secret("  HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ  ").unwrap();
-        assert!(!result.is_empty(), "should decode with surrounding whitespace");
+        assert!(
+            !result.is_empty(),
+            "should decode with surrounding whitespace"
+        );
     }
 
     #[test]

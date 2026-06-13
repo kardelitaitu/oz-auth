@@ -70,7 +70,10 @@ impl AppState {
 
     /// Reset rate-limit state after a successful unlock.
     fn reset_rate_limit(&self) {
-        let mut fa = self.failed_attempts.lock().unwrap_or_else(|e| e.into_inner());
+        let mut fa = self
+            .failed_attempts
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         *fa = 0;
         let mut la = self.last_attempt.lock().unwrap_or_else(|e| e.into_inner());
         *la = None;
@@ -79,7 +82,10 @@ impl AppState {
     /// Check whether the current unlock attempt should be rate-limited.
     /// Returns Ok(()) if the attempt is allowed, or Err(cooldown_remaining_secs).
     fn check_rate_limit(&self) -> Result<(), u64> {
-        let attempts = *self.failed_attempts.lock().unwrap_or_else(|e| e.into_inner());
+        let attempts = *self
+            .failed_attempts
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         if attempts == 0 {
             return Ok(());
         }
@@ -97,7 +103,10 @@ impl AppState {
 
     /// Record a failed unlock attempt for rate-limiting.
     fn record_failed_attempt(&self) {
-        let mut fa = self.failed_attempts.lock().unwrap_or_else(|e| e.into_inner());
+        let mut fa = self
+            .failed_attempts
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         *fa = fa.saturating_add(1);
         let mut la = self.last_attempt.lock().unwrap_or_else(|e| e.into_inner());
         *la = Some(Instant::now());

@@ -130,8 +130,7 @@ fn save_backup_file_impl(state: &AppState) -> Result<String, String> {
         }
     }
 
-    std::fs::write(&path, &content)
-        .map_err(|e| format!("failed to write backup: {e}"))?;
+    std::fs::write(&path, &content).map_err(|e| format!("failed to write backup: {e}"))?;
 
     Ok(path.to_string_lossy().to_string())
 }
@@ -221,7 +220,10 @@ mod tests {
     fn test_urlencoding_unicode_chars_encoded() {
         let result = urlencoding("café");
         // é = 0xC3 0xA9 in UTF-8
-        assert!(result.contains("%C3") && result.contains("%A9"), "é should be encoded: {result}");
+        assert!(
+            result.contains("%C3") && result.contains("%A9"),
+            "é should be encoded: {result}"
+        );
     }
 
     // ── get_otpauth_uri_impl tests ────────────────────────────
@@ -250,9 +252,15 @@ mod tests {
             let uri = get_otpauth_uri_impl("uri-test-1", &state).unwrap();
             assert!(uri.starts_with("otpauth://totp/"), "uri: {uri}");
             assert!(uri.contains("GitHub"), "uri should contain issuer: {uri}");
-            assert!(uri.contains("%40github.com"), "uri should contain encoded @: {uri}");
+            assert!(
+                uri.contains("%40github.com"),
+                "uri should contain encoded @: {uri}"
+            );
             assert!(uri.contains("secret="), "uri must have secret param: {uri}");
-            assert!(uri.contains("algorithm=SHA1"), "uri must have algorithm: {uri}");
+            assert!(
+                uri.contains("algorithm=SHA1"),
+                "uri must have algorithm: {uri}"
+            );
             assert!(uri.contains("digits=6"), "uri must have digits: {uri}");
             assert!(uri.contains("period=30"), "uri must have period: {uri}");
 
@@ -371,11 +379,17 @@ mod tests {
             let uri = get_otpauth_uri_impl("b32-test", &state).unwrap();
 
             let secret_start = uri.find("secret=").unwrap() + 7;
-            let secret_end = uri[secret_start..].find('&').map(|i| secret_start + i).unwrap_or(uri.len());
+            let secret_end = uri[secret_start..]
+                .find('&')
+                .map(|i| secret_start + i)
+                .unwrap_or(uri.len());
             let secret_b32 = &uri[secret_start..secret_end];
 
             let decoded = base32::decode(Alphabet::Rfc4648 { padding: false }, secret_b32);
-            assert!(decoded.is_some(), "secret should be valid base32: {secret_b32}");
+            assert!(
+                decoded.is_some(),
+                "secret should be valid base32: {secret_b32}"
+            );
 
             super::super::cleanup_auth_file();
         });
@@ -403,8 +417,14 @@ mod tests {
             crate::storage::save(&data).unwrap();
 
             let uri = get_otpauth_uri_impl("spaces", &state).unwrap();
-            assert!(uri.contains("My%20Big%20Corp"), "spaces should be %20: {uri}");
-            assert!(!uri.contains("My Big Corp"), "raw spaces should not appear: {uri}");
+            assert!(
+                uri.contains("My%20Big%20Corp"),
+                "spaces should be %20: {uri}"
+            );
+            assert!(
+                !uri.contains("My Big Corp"),
+                "raw spaces should not appear: {uri}"
+            );
 
             super::super::cleanup_auth_file();
         });
@@ -453,7 +473,10 @@ mod tests {
             assert!(uris[1].contains("Google"), "second URI: {}", uris[1]);
 
             for uri in &uris {
-                assert!(uri.starts_with("otpauth://totp/"), "not a valid otpauth URI: {uri}");
+                assert!(
+                    uri.starts_with("otpauth://totp/"),
+                    "not a valid otpauth URI: {uri}"
+                );
                 assert!(uri.contains("secret="), "missing secret: {uri}");
             }
 
@@ -538,9 +561,18 @@ mod tests {
             let content = std::fs::read_to_string(&saved_path).unwrap();
             assert!(content.starts_with('#'), "should start with comment header");
             assert!(content.contains("1 account(s)"), "should show count");
-            assert!(content.contains("WARNING"), "should have warning: {content}");
-            assert!(content.contains("plain-text secrets"), "should mention plain-text");
-            assert!(content.contains("otpauth://totp/"), "should contain otpauth URIs");
+            assert!(
+                content.contains("WARNING"),
+                "should have warning: {content}"
+            );
+            assert!(
+                content.contains("plain-text secrets"),
+                "should mention plain-text"
+            );
+            assert!(
+                content.contains("otpauth://totp/"),
+                "should contain otpauth URIs"
+            );
 
             super::super::cleanup_auth_file();
             backup_paths_cleanup();
@@ -587,8 +619,10 @@ mod tests {
             crate::storage::save(&data).unwrap();
 
             let path1 = save_backup_file_impl(&state).unwrap();
-            assert!(path1.ends_with("oz-auth.backup.txt") || path1.ends_with("backup.txt"),
-                "first backup path: {path1}");
+            assert!(
+                path1.ends_with("oz-auth.backup.txt") || path1.ends_with("backup.txt"),
+                "first backup path: {path1}"
+            );
 
             let exe_dir = crate::paths::exe_dir();
             let exe_stem = crate::paths::exe_stem();
@@ -596,7 +630,10 @@ mod tests {
             std::fs::write(&second_variant, "fake").unwrap();
 
             let path2 = save_backup_file_impl(&state).unwrap();
-            assert!(path2.contains("(2)"), "second backup should use (2): {path2}");
+            assert!(
+                path2.contains("(2)"),
+                "second backup should use (2): {path2}"
+            );
 
             super::super::cleanup_auth_file();
             backup_paths_cleanup();
@@ -645,9 +682,18 @@ mod tests {
             assert!(content.contains("2 account(s)"), "should show count 2");
             assert!(content.contains("Alpha"), "should contain Alpha: {content}");
             assert!(content.contains("Beta"), "should contain Beta: {content}");
-            assert!(content.contains("algorithm=SHA256"), "should contain SHA256: {content}");
-            assert!(content.contains("digits=8"), "should contain digits=8: {content}");
-            assert!(content.contains("period=60"), "should contain period=60: {content}");
+            assert!(
+                content.contains("algorithm=SHA256"),
+                "should contain SHA256: {content}"
+            );
+            assert!(
+                content.contains("digits=8"),
+                "should contain digits=8: {content}"
+            );
+            assert!(
+                content.contains("period=60"),
+                "should contain period=60: {content}"
+            );
 
             super::super::cleanup_auth_file();
             backup_paths_cleanup();
@@ -679,8 +725,10 @@ mod tests {
             crate::storage::save(&data).unwrap();
 
             let err = save_backup_file_impl(&state).unwrap_err();
-            assert!(err.contains("locked") || err.contains("key"),
-                "locked app should fail backup: {err}");
+            assert!(
+                err.contains("locked") || err.contains("key"),
+                "locked app should fail backup: {err}"
+            );
 
             super::super::cleanup_auth_file();
             backup_paths_cleanup();
