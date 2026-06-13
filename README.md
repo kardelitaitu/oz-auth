@@ -14,7 +14,11 @@
   <img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build passing">
 </p>
 
----
+<p align="center">
+  <img src="./screenshot-slider.svg" alt="Screenshots" />
+</p>
+
+
 
 ## Why oz-auth?
 
@@ -26,9 +30,6 @@ Most authenticator apps are mobile-only, closed-source, or require cloud sync. o
 - **Open source** — inspect every line of code that touches your secrets
 
 ---
-
-<!-- Add a screenshot or GIF here: -->
-<!-- ![oz-auth Screenshot](screenshot.png) -->
 
 ## Features
 
@@ -51,11 +52,16 @@ Most authenticator apps are mobile-only, closed-source, or require cloud sync. o
 
 ## Quick Start
 
-### For End Users
+<img src="https://img.shields.io/badge/For_End_User-white?style=for-the-badge&logoWidth=1"/>
 
-Download `oz-auth.exe` and the companion `.auth` file. Place them in the same folder. Run. That's it.
+Download `oz-auth.exe` from [Releases](https://github.com/kardelitaitu/oz-auth/releases). Place them in the same folder (eg: 'My Documents'). Run. That's it. (it will generate the .auth file after do any changes)  
+For multiple notes. You can copy the .exe and rename it.  
+Then you can put the shortcut on 'C:\Users\YOUR_USERNAME\AppData\Roaming\Microsoft\Windows\Start Menu' if needed, so you can call it from start menu search.
 
-### For Developers
+<img src="https://img.shields.io/badge/For_Developers-white?style=for-the-badge&logoWidth=1"/>
+
+<details>
+<summary><strong>Click to expand</strong></summary>
 
 **Prerequisites:** [Rust](https://rustup.rs/) 1.80+, [Node.js](https://nodejs.org/) 18+, Windows 10+
 
@@ -161,7 +167,7 @@ oz-auth assumes your desktop could be compromised. Every layer minimizes the win
                    │  invoke() — Tauri IPC
 ┌──────────────────┴──────────────────┐
 │       BACKEND (Rust)                │
-│  totp-rs · AES-256-GCM · Argon2id  │
+│  totp-rs · AES-256-GCM · Argon2id   │
 │  .auth file · System tray           │
 │  Process mitigation · Diagnostics   │
 └─────────────────────────────────────┘
@@ -206,9 +212,12 @@ tauri-authenticator/
 
 </details>
 
+
 ---
 
-## Contributing
+<img src="https://img.shields.io/badge/Contributing-white?style=for-the-badge&logoWidth=1"/>
+
+### Contributing 
 
 Contributions are welcome. To get started:
 
@@ -220,14 +229,16 @@ Contributions are welcome. To get started:
 
 For architectural decisions, see [PLAN.md](PLAN.md).
 
+</details>
+
 ---
 
-## Changelog
+<img src="https://img.shields.io/badge/Changelog-white?style=for-the-badge&logoWidth=1"/>
 
 See [CHANGELOG.md](CHANGELOG.md) for release history.
 
 ---
 
-## License
+<img src="https://img.shields.io/badge/License-white?style=for-the-badge&logoWidth=1"/>
 
 [MIT](LICENSE) © kardelitaitu

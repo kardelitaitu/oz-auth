@@ -15,7 +15,11 @@ pub fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
     // Pad PIN to constant length to prevent PIN-length timing leakage
     let mut padded = password.as_bytes().to_vec();
     padded.resize(128, 0u8);
-    let result = argon2::Argon2::default().hash_password_into(&padded, salt, &mut key);
+    // Explicit Argon2id parameters: 19 MiB memory, 2 iterations, 1 parallelism
+    let params = argon2::Params::new(19_456, 2, 1, Some(32))
+        .map_err(|e| format!("argon2 params failed: {e}"))?;
+    let argon2 = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+    let result = argon2.hash_password_into(&padded, salt, &mut key);
     // Zeroize the padded buffer immediately
     padded.zeroize();
     result.map_err(|e| format!("key derivation failed: {e}"))?;

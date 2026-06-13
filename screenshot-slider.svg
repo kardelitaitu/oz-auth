@@ -1,0 +1,58 @@
+<svg fill="none" width="100%" height="400" xmlns="http://www.w3.org/2000/svg">
+  <foreignObject width="100%" height="100%">
+    <div xmlns="http://www.w3.org/1999/xhtml">
+      <style>
+        .slider-box {
+          width: 100%;
+          height: 400px;
+          overflow: hidden;
+          position: relative;
+          border-radius: 12px;
+        }
+        .slider-track {
+          display: flex;
+          width: 300%; /* 100% multiplied by the number of slides */
+          height: 100%;
+          animation: slideAnimation 12s infinite ease-in-out;
+        }
+        .slide {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          justify-content: center;
+          align-items: center;
+        }
+        .slide img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+        
+        /* Animation logic: switches positions over time */
+        @keyframes slideAnimation {
+          0%, 28%  { transform: translateX(0%); }
+          33%, 61% { transform: translateX(-33.33%); }
+          66%, 95% { transform: translateX(-66.66%); }
+          100%     { transform: translateX(0%); }
+        }
+      </style>
+
+      <div class="slider-box">
+        <div class="slider-track">
+          <!-- Slide 1 -->
+          <div class="slide">
+            <img src="https://githubusercontent.com/path/to/screenshot1.png" />
+          </div>
+          <!-- Slide 2 -->
+          <div class="slide">
+            <img src="https://githubusercontent.com/path/to/screenshot2.png" />
+          </div>
+          <!-- Slide 3 -->
+          <div class="slide">
+            <img src="https://githubusercontent.com/path/to/screenshot3.png" />
+          </div>
+        </div>
+      </div>
+    </div>
+  </foreignObject>
+</svg>

@@ -279,11 +279,16 @@ export function openSettings(config) {
           backupConfirmError.classList.remove("hidden");
           return;
         }
-        // Verify PIN before exporting
+        // Verify PIN before exporting (read-only check, no side effects)
         try {
-          await invoke("unlock", { pin });
+          const valid = await invoke("verify_pin", { pin });
+          if (!valid) {
+            backupConfirmError.textContent = "Wrong PIN";
+            backupConfirmError.classList.remove("hidden");
+            return;
+          }
         } catch (e) {
-          backupConfirmError.textContent = "Wrong PIN";
+          backupConfirmError.textContent = typeof e === "string" ? e : "PIN verification failed";
           backupConfirmError.classList.remove("hidden");
           return;
         }
