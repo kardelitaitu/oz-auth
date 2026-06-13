@@ -12,6 +12,10 @@
   <img src="https://img.shields.io/badge/tests-584%20passing-brightgreen.svg" alt="584 tests passing">
   <img src="https://img.shields.io/badge/clippy-clean-brightgreen.svg" alt="Clippy clean">
   <img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build passing">
+  <img src="https://img.shields.io/badge/platform-Windows%2010%2B-lightgrey.svg" alt="Platform">
+  <img src="https://img.shields.io/badge/security-hardened-green.svg" alt="Security hardened">
+  <img src="https://img.shields.io/badge/code_size-Rust+%2B_JS-ff69b4.svg" alt="Code size">
+  <img src="https://img.shields.io/github/last-commit/kardelitaitu/oz-auth.svg" alt="Last commit">
 </p>
 
 <p align="center">
