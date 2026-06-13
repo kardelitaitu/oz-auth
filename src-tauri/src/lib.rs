@@ -19,7 +19,6 @@ pub(crate) mod test_utils;
 
 use std::sync::Mutex;
 use std::time::Instant;
-use tauri::window::Color;
 use tauri::Manager;
 use zeroize::Zeroizing;
 
@@ -308,7 +307,7 @@ pub fn run() {
                 let _ = window.set_always_on_top(cfg.always_on_top);
                 let _ = window.set_min_size(Some(tauri::PhysicalSize::new(420, 420)));
                 #[cfg(windows)]
-                let _ = window.set_background_color(Some(Color(30, 30, 30, 255)));
+                let _ = window.set_background_color(Some(tauri::window::Color(30, 30, 30, 255)));
                 let _ = window.show();
                 let _ = window.set_focus();
                 let _ = window.set_title(&exe_name);
