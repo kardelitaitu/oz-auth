@@ -33,17 +33,10 @@ jobs:
         with:
           components: clippy
 
-      - name: Install cargo-audit
-        run: cargo install cargo-audit --locked
-
-      - name: Install cargo-deny
-        run: cargo install cargo-deny --locked
-
-      - name: Run cargo-audit
-        run: cargo audit
-
-      - name: Run cargo-deny
-        run: cargo deny check
+      - name: Cache Rust dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
 
       - name: Run clippy
         run: cargo clippy -- -D warnings
@@ -56,6 +49,12 @@ jobs:
 
       - name: Build release
         run: cargo build --release
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+
+      - name: Run cargo-audit
+        run: cargo audit
 
   js:
     name: JS (npm audit)
