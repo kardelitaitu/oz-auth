@@ -9,7 +9,7 @@
   <a href="https://github.com/kardelitaitu/oz-auth/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/rust-1.80%2B-orange.svg" alt="Rust 1.80+">
   <img src="https://img.shields.io/badge/tauri-v2-7c3aed.svg" alt="Tauri v2">
-  <img src="https://img.shields.io/badge/tests-307%20passing-brightgreen.svg" alt="307 tests passing">
+  <img src="https://img.shields.io/badge/tests-472%20passing-brightgreen.svg" alt="472 tests passing">
   <img src="https://img.shields.io/badge/clippy-clean-brightgreen.svg" alt="Clippy clean">
   <img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build passing">
 </p>
@@ -87,7 +87,7 @@ The output is at `src-tauri/target/release/oz-auth.exe`.
 |---------|-------------|
 | `cargo tauri dev` | Dev mode with hot-reload |
 | `npm run tauri` | Full production build |
-| `cargo test` | Run 307 tests |
+| `cargo test` | Run 472 tests |
 | `cargo clippy -- -D warnings` | Lint (strict) |
 | `cargo fmt --check` | Check formatting |
 | `cargo check` | Type-check only |
