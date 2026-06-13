@@ -383,11 +383,11 @@ mod tests {
             let json = flush();
             let restored: Vec<AuditEntry> = serde_json::from_str(&json).unwrap();
             assert_eq!(restored.len(), 1000, "must truncate to 1000 entries");
-            // First kept entry should be 1100-1000=100 events after start
+            // First kept entry is 100 events after start
             assert_eq!(
                 restored[0].seq,
                 start_seq + 100,
-                "first kept entry must be 100 past start"
+                "first kept entry must be 100 past start (start_seq={start_seq})"
             );
             assert_eq!(
                 restored[999].seq,

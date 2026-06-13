@@ -146,6 +146,7 @@ pub fn save_backup_file(state: State<'_, AppState>) -> Result<String, String> {
 mod tests {
     use super::*;
     use crate::models::account::Algorithm;
+    use crate::test_utils::{cleanup_auth_file, test_app_state, test_key, with_fs_lock};
 
     fn backup_paths_cleanup() {
         let exe_dir = crate::paths::exe_dir();
@@ -230,9 +231,9 @@ mod tests {
 
     #[test]
     fn test_get_otpauth_uri_success() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "uri-test-1".into(),
@@ -264,15 +265,15 @@ mod tests {
             assert!(uri.contains("digits=6"), "uri must have digits: {uri}");
             assert!(uri.contains("period=30"), "uri must have period: {uri}");
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_get_otpauth_uri_not_found() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "real".into(),
@@ -292,15 +293,15 @@ mod tests {
             let err = get_otpauth_uri_impl("nonexistent", &state).unwrap_err();
             assert!(err.contains("not found"), "error: {err}");
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_get_otpauth_uri_sha256_algorithm_in_uri() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "sha256-acc".into(),
@@ -322,15 +323,15 @@ mod tests {
             assert!(uri.contains("digits=8"), "uri: {uri}");
             assert!(uri.contains("period=60"), "uri: {uri}");
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_get_otpauth_uri_sha512_algorithm_in_uri() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "sha512-acc".into(),
@@ -350,15 +351,15 @@ mod tests {
             let uri = get_otpauth_uri_impl("sha512-acc", &state).unwrap();
             assert!(uri.contains("algorithm=SHA512"), "uri: {uri}");
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_get_otpauth_uri_secret_is_base32() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let known_hex = hex::decode("3132333435363738393031323334353637383930").unwrap(); // 20 bytes
             let accounts = vec![Account {
@@ -391,15 +392,15 @@ mod tests {
                 "secret should be valid base32: {secret_b32}"
             );
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_get_otpauth_uri_issuer_with_spaces_encoded() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "spaces".into(),
@@ -426,7 +427,7 @@ mod tests {
                 "raw spaces should not appear: {uri}"
             );
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
@@ -434,9 +435,9 @@ mod tests {
 
     #[test]
     fn test_get_backup_uris_returns_all_accounts() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![
                 Account {
@@ -480,15 +481,15 @@ mod tests {
                 assert!(uri.contains("secret="), "missing secret: {uri}");
             }
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_get_backup_uris_empty_when_no_accounts() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
@@ -496,15 +497,15 @@ mod tests {
             let uris = get_backup_uris_impl(&state).unwrap();
             assert!(uris.is_empty(), "no accounts → empty vec");
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_get_backup_uris_single_account() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "single".into(),
@@ -526,7 +527,7 @@ mod tests {
             assert!(uris[0].contains("Solo"));
             assert!(uris[0].contains("%40solo.com"));
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
@@ -534,10 +535,10 @@ mod tests {
 
     #[test]
     fn test_save_backup_file_creates_file() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             backup_paths_cleanup();
-            let state = super::super::test_app_state();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "bk1".into(),
@@ -574,16 +575,16 @@ mod tests {
                 "should contain otpauth URIs"
             );
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
             backup_paths_cleanup();
         });
     }
 
     #[test]
     fn test_save_backup_file_empty_accounts_fails() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
@@ -591,17 +592,17 @@ mod tests {
             let err = save_backup_file_impl(&state).unwrap_err();
             assert!(err.contains("no accounts"), "error: {err}");
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_save_backup_file_auto_increment_filename() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             backup_paths_cleanup();
 
-            let state = super::super::test_app_state();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "inc1".into(),
@@ -635,17 +636,17 @@ mod tests {
                 "second backup should use (2): {path2}"
             );
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
             backup_paths_cleanup();
         });
     }
 
     #[test]
     fn test_save_backup_file_content_has_multiple_uris() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             backup_paths_cleanup();
-            let state = super::super::test_app_state();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![
                 Account {
@@ -695,20 +696,20 @@ mod tests {
                 "should contain period=60: {content}"
             );
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
             backup_paths_cleanup();
         });
     }
 
     #[test]
     fn test_save_backup_file_locked_fails() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             backup_paths_cleanup();
-            let state = super::super::test_app_state();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             data.config.password_protected = true;
-            let key = super::super::test_key();
+            let key = test_key();
             let accounts = vec![Account {
                 id: "locked-bk".into(),
                 issuer: "Locked".into(),
@@ -730,7 +731,7 @@ mod tests {
                 "locked app should fail backup: {err}"
             );
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
             backup_paths_cleanup();
         });
     }

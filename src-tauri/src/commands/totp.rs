@@ -126,6 +126,7 @@ mod tests {
     use super::*;
     use crate::crypto;
     use crate::models::account::{Account, Algorithm};
+    use crate::test_utils::{cleanup_auth_file, test_app_state, with_fs_lock};
     use chrono::Utc;
 
     fn test_account(secret: &[u8], algo: Algorithm, digits: u8) -> Account {
@@ -141,29 +142,6 @@ mod tests {
             created_at: Utc::now(),
             updated_at: Utc::now(),
         }
-    }
-
-    fn test_app_state() -> AppState {
-        AppState {
-            encryption_key: std::sync::Mutex::new(None),
-            failed_attempts: std::sync::Mutex::new(0),
-            last_attempt: std::sync::Mutex::new(None),
-            cached_data: std::sync::Mutex::new(None),
-        }
-    }
-
-    fn cleanup_auth_file() {
-        let path = crate::paths::auth_path();
-        if path.exists() {
-            let _ = std::fs::remove_file(&path);
-        }
-    }
-
-    fn with_fs_lock(f: impl FnOnce()) {
-        let _lock = crate::storage::auth_file::FS_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        f();
     }
 
     fn seed_plaintext_accounts(accounts: &[Account]) {

@@ -221,29 +221,7 @@ pub fn import_backup(path: String, state: State<'_, AppState>) -> Result<(), Str
 mod tests {
     use super::*;
     use crate::crypto;
-
-    fn cleanup_auth_file() {
-        let path = crate::paths::auth_path();
-        if path.exists() {
-            let _ = std::fs::remove_file(&path);
-        }
-    }
-
-    fn with_fs_lock(f: impl FnOnce()) {
-        let _lock = crate::storage::auth_file::FS_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        f();
-    }
-
-    fn test_app_state() -> AppState {
-        AppState {
-            encryption_key: std::sync::Mutex::new(None),
-            failed_attempts: std::sync::Mutex::new(0),
-            last_attempt: std::sync::Mutex::new(None),
-            cached_data: std::sync::Mutex::new(None),
-        }
-    }
+    use crate::test_utils::{cleanup_auth_file, test_app_state, with_fs_lock};
 
     // ── AppState ─────────────────────────────────────────────
 

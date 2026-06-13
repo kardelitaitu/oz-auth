@@ -11,6 +11,9 @@ pub mod storage;
 pub mod tray;
 pub mod utils;
 
+#[cfg(test)]
+pub(crate) mod test_utils;
+
 // #[cfg(test)]  // disabled for tarpaulin (requires WebView2)
 // mod tests_integration;
 
@@ -180,6 +183,16 @@ impl AppState {
             *cache = None;
         }
     }
+
+    #[cfg(test)]
+    pub(crate) fn new_test() -> Self {
+        Self {
+            encryption_key: Mutex::new(None),
+            failed_attempts: Mutex::new(0),
+            last_attempt: Mutex::new(None),
+            cached_data: Mutex::new(None),
+        }
+    }
 }
 
 /// Windows API: prevent memory from being paged to swap.
@@ -212,9 +225,13 @@ fn get_app_version(app: tauri::AppHandle) -> String {
     app.package_info().version.to_string()
 }
 
+fn load_config_impl(state: &AppState) -> Result<crate::config::Config, String> {
+    Ok(state.load_data()?.config)
+}
+
 #[tauri::command]
-fn load_config() -> Result<crate::config::Config, String> {
-    Ok(crate::storage::try_load()?.config)
+fn load_config(state: tauri::State<'_, AppState>) -> Result<crate::config::Config, String> {
+    load_config_impl(&state)
 }
 
 #[tauri::command]
@@ -227,9 +244,8 @@ fn get_audit_log() -> Vec<crate::audit::AuditEntry> {
     crate::audit::snapshot()
 }
 
-#[tauri::command]
-fn save_config(cfg: crate::config::Config) -> Result<(), String> {
-    let mut data = crate::storage::try_load()?;
+fn save_config_impl(cfg: crate::config::Config, state: &AppState) -> Result<(), String> {
+    let mut data = state.load_data()?;
     let mut merged = cfg;
 
     // Preserve password metadata from storage — security-critical
@@ -238,8 +254,17 @@ fn save_config(cfg: crate::config::Config) -> Result<(), String> {
 
     data.config = merged;
     crate::storage::flush_and_save(&mut data)?;
+    state.invalidate_cache();
     crate::diagnostics::event("config", "settings updated");
     Ok(())
+}
+
+#[tauri::command]
+fn save_config(
+    cfg: crate::config::Config,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    save_config_impl(cfg, &state)
 }
 
 // ── App entry ────────────────────────────────────────────────
@@ -324,34 +349,13 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn cleanup_auth_file() {
-        let path = crate::paths::auth_path();
-        if path.exists() {
-            let _ = std::fs::remove_file(&path);
-        }
-    }
-
-    fn with_fs_lock(f: impl FnOnce()) {
-        let _lock = crate::storage::auth_file::FS_TEST_MUTEX
-            .lock()
-            .unwrap_or_else(|e| e.into_inner());
-        f();
-    }
-
-    fn test_app_state() -> AppState {
-        AppState {
-            encryption_key: Mutex::new(None),
-            failed_attempts: Mutex::new(0),
-            last_attempt: Mutex::new(None),
-            cached_data: Mutex::new(None),
-        }
-    }
+    use crate::test_utils::{cleanup_auth_file, test_app_state, with_fs_lock};
 
     #[test]
     fn test_save_config_preserves_password_metadata() {
         with_fs_lock(|| {
             cleanup_auth_file();
+            let state = test_app_state();
             // Seed an auth file with PIN protection set AND encrypted accounts
             // (reconcile_invariants resets password_protected if accounts are unencrypted)
             let key = [0x42u8; 32];
@@ -368,7 +372,7 @@ mod tests {
                 password_salt: String::new(),
                 ..crate::config::Config::default()
             };
-            save_config(cfg).unwrap();
+            save_config_impl(cfg, &state).unwrap();
 
             // Verify metadata was preserved
             let loaded = crate::storage::try_load().unwrap();
@@ -388,6 +392,7 @@ mod tests {
     fn test_save_config_updates_non_security_fields() {
         with_fs_lock(|| {
             cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             data.config.theme = "dark".into();
             data.config.width = 320;
@@ -399,7 +404,7 @@ mod tests {
                 clipboard_clear_seconds: 60,
                 ..crate::config::Config::default()
             };
-            save_config(cfg).unwrap();
+            save_config_impl(cfg, &state).unwrap();
 
             let loaded = crate::storage::try_load().unwrap();
             assert_eq!(loaded.config.theme, "light", "theme should be updated");
@@ -418,10 +423,11 @@ mod tests {
     fn test_load_config_corrupted_auth_file_returns_error() {
         with_fs_lock(|| {
             cleanup_auth_file();
+            let state = test_app_state();
             std::fs::write(crate::paths::auth_path(), "{{not valid json at all![[[").unwrap();
 
             // load_config calls try_load() which fails on parse error
-            let result = load_config();
+            let result = load_config_impl(&state);
             assert!(
                 result.is_err(),
                 "load_config must fail on corrupted .auth file"
@@ -438,8 +444,9 @@ mod tests {
     fn test_load_config_fresh_returns_defaults() {
         with_fs_lock(|| {
             cleanup_auth_file();
+            let state = test_app_state();
             // No .auth file → try_load returns fresh() → config is default
-            let cfg = load_config().unwrap();
+            let cfg = load_config_impl(&state).unwrap();
             let default = crate::config::Config::default();
             assert_eq!(cfg.theme, default.theme);
             assert!(!cfg.password_protected);
@@ -540,7 +547,7 @@ mod tests {
             crate::storage::save(&data2).unwrap();
 
             // Without invalidation, cache returns stale data
-            let cached = state.load_data().unwrap();
+            let _cached = state.load_data().unwrap();
             // (might return stale "dark" if mtime hasn't changed yet)
 
             // After invalidation, must return fresh data

@@ -77,41 +77,9 @@ pub fn decode_secret(input: &str) -> Result<Vec<u8>, String> {
 // ── Shared test infrastructure ───────────────────────────────
 
 #[cfg(test)]
-fn test_app_state() -> AppState {
-    AppState {
-        encryption_key: std::sync::Mutex::new(None),
-        failed_attempts: std::sync::Mutex::new(0),
-        last_attempt: std::sync::Mutex::new(None),
-        cached_data: std::sync::Mutex::new(None),
-    }
-}
-
-#[cfg(test)]
-fn cleanup_auth_file() {
-    let path = crate::paths::auth_path();
-    if path.exists() {
-        let _ = std::fs::remove_file(&path);
-    }
-}
-
-#[cfg(test)]
-fn with_fs_lock(f: impl FnOnce()) {
-    let _lock = crate::storage::auth_file::FS_TEST_MUTEX
-        .lock()
-        .unwrap_or_else(|e| e.into_inner());
-    f();
-}
-
-#[cfg(test)]
-fn test_key() -> [u8; 32] {
-    [0xAAu8; 32]
-}
-
-// ── Shared tests ─────────────────────────────────────────────
-
-#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::{cleanup_auth_file, test_key, with_fs_lock};
 
     // ── decode_secret unit tests ──────────────────────────────
 

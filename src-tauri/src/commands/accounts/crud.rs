@@ -262,14 +262,15 @@ pub fn list_accounts(
 mod tests {
     use super::*;
     use crate::models::account::Algorithm;
+    use crate::test_utils::{cleanup_auth_file, test_app_state, with_fs_lock};
 
     // ── add_account_impl tests ────────────────────────────────
 
     #[test]
     fn test_add_account_impl_plaintext() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
@@ -287,15 +288,15 @@ mod tests {
             assert_eq!(account.issuer, "TestIssuer");
             assert_eq!(account.digits, 6);
             assert_eq!(account.secret.len(), 20);
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_add_account_impl_with_custom_params() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
@@ -313,7 +314,7 @@ mod tests {
             assert!(matches!(account.algorithm, Algorithm::SHA256));
             assert_eq!(account.digits, 8);
             assert_eq!(account.period, 60);
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
@@ -321,9 +322,9 @@ mod tests {
 
     #[test]
     fn test_add_account_from_uri_impl_success() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
@@ -332,22 +333,22 @@ mod tests {
             let account = add_account_from_uri_impl(uri, &state).unwrap();
             assert_eq!(account.issuer, "ACME");
             assert_eq!(account.label, "john@example.com");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_add_account_from_uri_impl_empty_secret_fails() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let uri = "otpauth://totp/Test:test@test.com?secret=";
             let err = add_account_from_uri_impl(uri, &state).unwrap_err();
             assert!(
                 err.contains("empty") || err.contains("invalid"),
                 "error: {err}"
             );
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
@@ -355,9 +356,9 @@ mod tests {
 
     #[test]
     fn test_remove_account_impl_removes_by_id() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![
                 Account {
@@ -398,14 +399,14 @@ mod tests {
                 a.secret.zeroize();
             }
             remaining.clear();
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_remove_account_nonexistent_id_noop() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "keep-me".into(),
@@ -436,7 +437,7 @@ mod tests {
                 a.secret.zeroize();
             }
             reloaded.clear();
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
@@ -444,9 +445,9 @@ mod tests {
 
     #[test]
     fn test_update_account_impl_updates_fields() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "upd".into(),
@@ -474,15 +475,15 @@ mod tests {
             assert_eq!(updated.issuer, "NewIssuer");
             assert_eq!(updated.label, "new@test.com");
             assert_eq!(updated.sort_order, 42);
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_update_account_impl_nonexistent_id_fails() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "real".into(),
@@ -500,15 +501,15 @@ mod tests {
             crate::storage::save(&data).unwrap();
             let err = update_account_impl("nonexistent", None, None, None, &state).unwrap_err();
             assert!(err.contains("not found"), "error: {err}");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_update_account_partial_issuer_only() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "upd".into(),
@@ -530,15 +531,15 @@ mod tests {
             assert_eq!(updated.issuer, "NewIssuer");
             assert_eq!(updated.label, "keep@test.com", "label must be unchanged");
             assert_eq!(updated.sort_order, 7, "sort_order must be unchanged");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_update_account_partial_label_only() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "upd".into(),
@@ -560,15 +561,15 @@ mod tests {
             assert_eq!(updated.issuer, "KeepIssuer", "issuer must be unchanged");
             assert_eq!(updated.label, "new@test.com");
             assert_eq!(updated.sort_order, 3, "sort_order must be unchanged");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_update_account_partial_sort_order_only() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "upd".into(),
@@ -589,7 +590,7 @@ mod tests {
             assert_eq!(updated.issuer, "KeepIssuer", "issuer must be unchanged");
             assert_eq!(updated.label, "keep@test.com", "label must be unchanged");
             assert_eq!(updated.sort_order, 99);
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
@@ -597,9 +598,9 @@ mod tests {
 
     #[test]
     fn test_list_accounts_impl_with_search() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![
                 Account {
@@ -633,15 +634,15 @@ mod tests {
             let results = list_accounts_impl(Some("github"), &state).unwrap();
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].issuer, "GitHub");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_list_accounts_impl_no_search_returns_all() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![
                 Account {
@@ -674,15 +675,15 @@ mod tests {
 
             let results = list_accounts_impl(None, &state).unwrap();
             assert_eq!(results.len(), 2);
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_list_accounts_search_no_match() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "a1".into(),
@@ -701,15 +702,15 @@ mod tests {
 
             let results = list_accounts_impl(Some("xyzzy"), &state).unwrap();
             assert!(results.is_empty(), "no-match search must return empty");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_list_accounts_search_by_label() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![
                 Account {
@@ -744,7 +745,7 @@ mod tests {
             let results = list_accounts_impl(Some("github.com"), &state).unwrap();
             assert_eq!(results.len(), 1, "must match by label substring");
             assert_eq!(results[0].id, "g1");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
@@ -752,8 +753,8 @@ mod tests {
 
     #[test]
     fn test_add_account_via_storage_with_accounts() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "existing".into(),
@@ -797,14 +798,14 @@ mod tests {
                 a.secret.zeroize();
             }
             final_accounts.clear();
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_remove_all_accounts_via_storage_yields_empty() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "only-one".into(),
@@ -836,14 +837,14 @@ mod tests {
                 a.secret.zeroize();
             }
             final_accounts.clear();
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_update_account_multiple_fields_via_storage() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "updatable".into(),
@@ -881,14 +882,14 @@ mod tests {
                 a.secret.zeroize();
             }
             final_accounts.clear();
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_list_accounts_search_case_insensitive() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![
                 Account {
@@ -947,14 +948,14 @@ mod tests {
                 a.secret.zeroize();
             }
             reloaded.clear();
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_list_accounts_search_no_match_returns_empty() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![
                 Account {
@@ -1001,14 +1002,14 @@ mod tests {
                 a.secret.zeroize();
             }
             all_accounts.clear();
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_add_account_duplicate_issuer_label_allowed() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![
                 Account {
@@ -1051,14 +1052,14 @@ mod tests {
                 a.secret.zeroize();
             }
             reloaded.clear();
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_update_account_sort_order_via_storage() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             let mut data = crate::storage::try_load().unwrap();
             let mut accounts = vec![
                 Account {
@@ -1100,14 +1101,14 @@ mod tests {
                 a.secret.zeroize();
             }
             reloaded.clear();
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_update_account_nonexistent_id_fails() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "real-id".into(),
@@ -1132,14 +1133,14 @@ mod tests {
                 a.secret.zeroize();
             }
             reloaded.clear();
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_add_account_from_uri_via_storage() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
+        with_fs_lock(|| {
+            cleanup_auth_file();
             let uri = "otpauth://totp/ACME:john@example.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&issuer=ACME&algorithm=SHA1&digits=6&period=30";
             let parsed = crate::utils::otpauth::parse_uri(uri).unwrap();
 
@@ -1173,13 +1174,13 @@ mod tests {
                 a.secret.zeroize();
             }
             reloaded.clear();
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     // ── Encrypted store tests ─────────────────────────────────
 
-    fn seed_encrypted_state(state: &super::super::AppState) -> zeroize::Zeroizing<[u8; 32]> {
+    fn seed_encrypted_state(state: &crate::AppState) -> zeroize::Zeroizing<[u8; 32]> {
         let salt = crate::crypto::generate_salt();
         let raw_key = crate::crypto::derive_key("testpin", &*salt).unwrap();
         let key = zeroize::Zeroizing::new(raw_key);
@@ -1194,9 +1195,9 @@ mod tests {
 
     #[test]
     fn test_add_account_encrypted() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             seed_encrypted_state(&state);
 
             let account = add_account_impl(
@@ -1214,15 +1215,15 @@ mod tests {
 
             let loaded = crate::storage::try_load().unwrap();
             assert!(loaded.accounts.encrypted, "must stay encrypted");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_list_accounts_encrypted() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             seed_encrypted_state(&state);
 
             add_account_impl(
@@ -1239,15 +1240,15 @@ mod tests {
             let results = list_accounts_impl(None, &state).unwrap();
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].issuer, "ListIssuer");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_update_account_encrypted() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             seed_encrypted_state(&state);
 
             let acct = add_account_impl(
@@ -1267,15 +1268,15 @@ mod tests {
 
             let results = list_accounts_impl(None, &state).unwrap();
             assert_eq!(results[0].issuer, "NewName");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_remove_account_encrypted() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             seed_encrypted_state(&state);
 
             let acct = add_account_impl(
@@ -1293,15 +1294,15 @@ mod tests {
 
             let results = list_accounts_impl(None, &state).unwrap();
             assert!(results.is_empty(), "account must be removed");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_list_accounts_search_label_encrypted() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             seed_encrypted_state(&state);
 
             add_account_impl(
@@ -1317,7 +1318,7 @@ mod tests {
 
             let results = list_accounts_impl(Some("github.com"), &state).unwrap();
             assert_eq!(results.len(), 1, "must find by label in encrypted store");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
@@ -1325,9 +1326,9 @@ mod tests {
 
     #[test]
     fn test_add_and_list_100_accounts() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
@@ -1362,15 +1363,15 @@ mod tests {
                 "Issuer9 + Issuer90..Issuer99 = 11 matches"
             );
 
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_search_special_characters() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![
                 Account {
@@ -1407,15 +1408,15 @@ mod tests {
 
             let results = list_accounts_impl(Some("at&t"), &state).unwrap();
             assert_eq!(results.len(), 1, "must match at&t case-insensitively");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_search_empty_query_returns_all() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![Account {
                 id: "a1".into(),
@@ -1434,15 +1435,15 @@ mod tests {
 
             let results = list_accounts_impl(Some(""), &state).unwrap();
             assert_eq!(results.len(), 1, "empty query must return all");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_update_preserves_other_accounts() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts = vec![
                 Account {
@@ -1485,15 +1486,15 @@ mod tests {
             assert_eq!(second.issuer, "Second", "other accounts must be unchanged");
             assert_eq!(second.digits, 8, "digits must be unchanged");
             assert_eq!(second.period, 60, "period must be unchanged");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_add_account_long_fields() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
@@ -1516,15 +1517,15 @@ mod tests {
             let results = list_accounts_impl(None, &state).unwrap();
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].issuer.len(), 500);
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_remove_last_account_leaves_empty() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
@@ -1543,15 +1544,15 @@ mod tests {
 
             let results = list_accounts_impl(None, &state).unwrap();
             assert!(results.is_empty());
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_add_account_default_params() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
@@ -1569,15 +1570,15 @@ mod tests {
             assert!(matches!(account.algorithm, Algorithm::SHA1));
             assert_eq!(account.digits, 6, "default digits must be 6");
             assert_eq!(account.period, 30, "default period must be 30");
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_add_account_all_algorithms() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
@@ -1600,15 +1601,15 @@ mod tests {
                     _ => unreachable!(),
                 }
             }
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 
     #[test]
     fn test_update_account_multiple_accounts_only_one_changes() {
-        super::super::with_fs_lock(|| {
-            super::super::cleanup_auth_file();
-            let state = super::super::test_app_state();
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
             let mut data = crate::storage::try_load().unwrap();
             let accounts: Vec<Account> = (0..10)
                 .map(|i| Account {
@@ -1645,7 +1646,7 @@ mod tests {
                     );
                 }
             }
-            super::super::cleanup_auth_file();
+            cleanup_auth_file();
         });
     }
 }
