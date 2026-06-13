@@ -112,10 +112,15 @@ export function openSettings(config) {
       </div>
     `;
 
+    // Interpolated values are safe (numbers, backend-controlled strings),
+    // but escape any string fields for defense-in-depth.
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+    );
     html += `
       <div class="settings-section settings-about">
-        <div class="about-name">${appName}</div>
-        <div class="about-version" id="about-version-link" title="View on GitHub">v${appVersion}</div>
+        <div class="about-name">${esc(appName)}</div>
+        <div class="about-version" id="about-version-link" title="View on GitHub">v${esc(appVersion)}</div>
       </div>
     `;
 

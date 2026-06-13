@@ -2,7 +2,7 @@
 
 /**
  * Create a clipboard manager that auto-clears copied codes after `clearSeconds`.
- * Returns { copy, clear, setClearSeconds }.
+ * Returns { copy, clear, setClearSeconds, clearOnLock }.
  */
 export function createClipboardManager(toastFn, clearSeconds = 30) {
   let clipboardTimer = null;
@@ -38,5 +38,17 @@ export function createClipboardManager(toastFn, clearSeconds = 30) {
     timeout = seconds;
   }
 
-  return { copy: copyCode, clear: clearTimer, setClearSeconds };
+  /**
+   * Clear the clipboard immediately (called when the app locks).
+   * Cancels any pending auto-clear timer and wipes the clipboard contents.
+   */
+  async function clearOnLock() {
+    clearTimer();
+    try {
+      await navigator.clipboard.writeText("");
+      toastFn("Clipboard cleared");
+    } catch (_) {}
+  }
+
+  return { copy: copyCode, clear: clearTimer, setClearSeconds, clearOnLock };
 }

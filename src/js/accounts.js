@@ -2,11 +2,15 @@
 
 /**
  * Escape HTML entities to prevent XSS.
+ * Uses manual replacement to avoid creating + reading DOM nodes.
  */
 export function escapeHtml(s) {
-  const div = document.createElement("div");
-  div.textContent = s;
-  return div.innerHTML;
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 /**

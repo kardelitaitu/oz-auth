@@ -272,7 +272,10 @@ const lock = createLockManager({
     await loadAccounts();      startCountdown(invoke, () => accounts, lock.getLocked, () => secondsRemaining, updateTrayIcon, toast);
       resetActivity();
     },
-    onLockStart: () => stopAutoLock(),
+    onLockStart: () => {
+      stopAutoLock();
+      clipboard.clearOnLock();
+    },
   onLockEnd: () => startAutoLock(),
 });
 
