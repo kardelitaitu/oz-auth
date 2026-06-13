@@ -27,7 +27,7 @@ aes-gcm = "0.10"
 argon2 = "0.5"
 hex = "0.4"
 rand = "0.8"
-zeroize = { version = "1.8.2", features = ["derive"] }
+zeroize = { version = "1.9", features = ["derive"] }
 sha2 = "0.10"
 libc = "0.2"
 
