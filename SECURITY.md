@@ -27,6 +27,11 @@ oz-auth is a **offline-first, memory-hardened** TOTP authenticator designed to p
 | **Crash dump exposure** | Windows: `SetErrorMode(SEM_NOGPFAULTERRORBOX)` suppresses crash dialog (note: WER can still write `.dmp` files to `%LOCALAPPDATA%\CrashDumps`). Linux: `prctl(PR_SET_DUMPABLE, 0)` disables core dumps. |
 | **Dependency vulnerabilities** | `cargo-audit` and `cargo-deny` run in CI on every push. Dependencies are audited against the RustSec Advisory Database. |
 | **Dynamic code injection** | `SetProcessMitigationPolicy(PROCESS_DYNAMIC_CODE_POLICY)` blocks `VirtualAlloc` + `EXECUTE` on Windows. |
+| **DLL injection / process hollowing** | `SetProcessMitigationPolicy(PROCESS_SIGNATURE_POLICY)` in audit mode (blocks non-Microsoft-signed DLLs when feasible). `PROCESS_IMAGE_LOAD_POLICY` blocks remote/UNC and low-integrity image loads. |
+| **Offline brute-force of .auth file** | Argon2id key derivation is memory-hard (GPU-resistant). Even if an attacker copies the `.auth` file, brute-forcing the PIN is computationally expensive. Salt is unique per PIN. |
+| **Screen capture / overlay attacks** | TOTP codes are displayed in the WebView. Malware with screen capture access can read codes. Mitigation: codes auto-refresh every 30s, limiting the window. (See Out-of-Scope for full analysis.) |
+| **IPC input length DoS** | Tauri's IPC serialization has implicit buffer limits. The Rust backend validates required fields (non-empty PIN, non-empty secret). Future: explicit max-length checks on all string inputs. |
+| **Audit trail tampering** | The audit trail uses a SHA-256 hash chain. Each entry references its predecessor via `SHA256(prev_entry)`. Any modification, removal, or reordering breaks the chain and is detectable via `verify_chain()`. The frontend can only read the audit log — no IPC command clears or modifies it. |
 
 ### Out-of-Scope / Accepted Risks
 
@@ -37,7 +42,11 @@ oz-auth is a **offline-first, memory-hardened** TOTP authenticator designed to p
 | **Cold-boot / RAM acquisition** — physical memory capture after `lock()` | `Zeroizing` ensures key bytes are overwritten, but residual capacitor charge in RAM chips can survive brief power loss (cold boot attack). Mitigation: use a TPM-backed keystore (future work). |
 | **WebView2 compromise** — a zero-day in the WebView2 rendering engine | The WebView has no network access. The Rust backend validates all IPC inputs. A WebView compromise is limited to UI manipulation and IPC calls against validated command handlers. |
 | **Side-channel (power analysis, EM, cache timing)** | The app runs on a general-purpose OS where these attacks require physical access and specialized equipment. Not in scope for v0.1. |
-| **Supply chain: Tauri framework vulnerabilities** | o z-authorship uses Tauri v2 with minimum necessary capabilities. Framework-level vulnerabilities are mitigated by the app's minimal attack surface (no file system access, no shell access, no network). |
+| **Supply chain: Tauri framework vulnerabilities** | oz-auth uses Tauri v2 with minimum necessary capabilities. Framework-level vulnerabilities are mitigated by the app's minimal attack surface (no file system access, no shell access, no network). |
+| **Screen capture by privileged malware** | Any process with screen capture access (e.g., `PrintWindow`, `BitBlt`) can read TOTP codes while displayed. This is a fundamental limitation of displaying secrets on screen. Mitigation: codes auto-refresh every 30s, limiting the exposure window. Users running untrusted software alongside oz-auth accept this risk. |
+| **Supply chain: compromised dependency** | While `cargo-deny` rejects unknown registries and `cargo-audit` scans for known CVEs, a targeted backdoor in a trusted crate could evade detection. Mitigation: minimal dependency tree, lockfile pinning. Future: `cargo-vet` for third-party auditing. |
+| **.auth file backup exposure** | Users who copy the `.auth` file to insecure locations (cloud sync, shared drives) expose encrypted secrets. The file is encrypted when a PIN is set, but weak PINs are vulnerable to offline brute-force. Mitigation: user education, future PIN strength guidance. |
+| **Clipboard hijacking before auto-clear** | Malware monitoring the clipboard can capture codes during the 30s window before auto-clear. Mitigation: users should verify codes are cleared after use. Future: Windows clipboard encryption (Win10+ `CF_UNICODETEXT` with `CLIPBRD_USE_OLE`). |
 
 ---
 
@@ -90,6 +99,14 @@ oz-auth is a **offline-first, memory-hardened** TOTP authenticator designed to p
 - **File I/O** (read/write `.auth` data file)
 - **Process mitigation policies** (Windows code-injection prevention, core dump suppression)
 - **VirtualLock** to prevent key from being paged to disk
+- **Audit trail** (SHA-256 hash chain, append-only, frontend read-only)
+- **Rate limiting** (exponential backoff on failed PIN attempts)
+
+### What the Rust Backend Does NOT Yet Control
+
+- **IPC input length validation** — No max-length checks on string parameters (PIN, issuer, label, secret, URI, path). Tauri's IPC has implicit limits, but the Rust side should enforce explicit bounds.
+- **PIN strength enforcement** — No minimum length or complexity requirement beyond non-empty.
+- **File locking** — No advisory locking on `.auth` file reads/writes (TOCTOU risk with concurrent access).
 
 ### What the WebView Controls
 
@@ -104,6 +121,23 @@ oz-auth is a **offline-first, memory-hardened** TOTP authenticator designed to p
 - **The `.auth` data file** — it sits alongside the `.exe` (intentionally visible, not hidden). Users can back it up, copy it to another machine, or encrypt it externally. The `.auth` file is a self-contained JSON with version, config, encrypted accounts, and audit log.
 - **The PIN** — users choose the PIN length and complexity. There is no minimum length (beyond non-empty), no complexity requirement, and no lockout.
 - **Executable placement** — running from an encrypted volume (BitLocker, VeraCrypt) adds a layer of file-at-rest protection.
+
+---
+
+## Planned Security Improvements
+
+| Priority | Item | Status | Description |
+|----------|------|--------|-------------|
+| High | IPC input length validation | Planned | Add max-length checks on all string IPC inputs (PIN, issuer, label, secret, URI, path) to prevent memory exhaustion DoS. |
+| High | `derive_key()` return type | Planned | Change return type from `[u8; 32]` to `Zeroizing<[u8; 32]>` to prevent accidental key copies on the stack. |
+| Medium | `Account.secret` Zeroizing | Planned | Change `secret: Vec<u8>` to `secret: Zeroizing<Vec<u8>>` for automatic zeroization. |
+| Medium | `paths.rs` error handling | Planned | Convert 4 `.expect()` calls to `Result` returns to prevent panics on exe path resolution failure. |
+| Medium | PIN strength guidance | Planned | Add optional PIN complexity check (min 6 digits, reject common PINs) with user override. |
+| Low | `Config.password_salt` Zeroizing | Planned | Wrap salt in `Zeroizing<String>` for defense-in-depth (salt is not secret, but zeroizing reduces exposure window). |
+| Low | File locking on .auth | Planned | Use advisory file locking during read/write to prevent TOCTOU race conditions between concurrent access. |
+| Future | TPM-backed keystore | Backlog | Use Windows DPAPI or TPM to protect the encryption key, eliminating cold-boot attack vector. |
+| Future | Encrypted backup format | Backlog | Export/import with user-supplied passphrase (separate from PIN) for secure backup transfer. |
+| Future | `cargo-vet` integration | Backlog | Third-party dependency auditing beyond `cargo-audit`/`cargo-deny`. |
 
 ---
 
