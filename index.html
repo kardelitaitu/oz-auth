@@ -139,10 +139,35 @@
         </div>
       </div>
 
+      <!-- QR Code popup -->
+      <div id="qr-popup" class="hidden">
+        <div id="qr-card">
+          <h2 id="qr-title">QR Code</h2>
+          <canvas id="qr-canvas"></canvas>
+          <p id="qr-hint">Scan with another device to import this account</p>
+          <button id="qr-close-btn">Close</button>
+        </div>
+      </div>
+
       <!-- Right-click context menu -->
       <div id="context-menu" class="hidden">
         <div class="ctx-item" data-action="edit">✎ Edit</div>
+        <div class="ctx-item" data-action="qr">▣ Show QR Code</div>
         <div class="ctx-item ctx-delete" data-action="delete">✕ Delete</div>
+      </div>
+
+      <!-- Backup confirmation overlay -->
+      <div id="backup-confirm-overlay" class="hidden">
+        <div id="backup-confirm-card">
+          <h2 id="backup-confirm-title">Export all keys?</h2>
+          <p id="backup-confirm-msg">This will save ALL secret keys in plain text next to the app. Keep the file secure.</p>
+          <input type="password" id="backup-pin-input" placeholder="Enter PIN to confirm" spellcheck="false" autocomplete="off" />
+          <div id="backup-confirm-error" class="hidden"></div>
+          <div class="dialog-actions">
+            <button id="backup-confirm-cancel">Cancel</button>
+            <button id="backup-confirm-submit">Confirm</button>
+          </div>
+        </div>
       </div>
 
       <!-- Delete confirmation overlay -->

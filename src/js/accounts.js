@@ -2,11 +2,15 @@
 
 /**
  * Escape HTML entities to prevent XSS.
+ * Uses manual replacement to avoid creating + reading DOM nodes.
  */
 export function escapeHtml(s) {
-  const div = document.createElement("div");
-  div.textContent = s;
-  return div.innerHTML;
+  return String(s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 /**
@@ -27,6 +31,7 @@ export function renderAccounts(accounts, accountListEl, callbacks) {
     const card = document.createElement("div");
     card.className = "account-card";
     card.dataset.id = a.id;
+    const safeId = escapeHtml(a.id);
     card.innerHTML = `
       <div class="card-drag-handle" title="Drag to reorder">
         <span></span><span></span><span></span>
@@ -37,16 +42,16 @@ export function renderAccounts(accounts, accountListEl, callbacks) {
           <span class="card-label">${escapeHtml(a.label)}</span>
         </div>
         <div class="card-col-2">
-          <span class="card-code" data-id="${a.id}">------</span>
+          <span class="card-code" data-id="${safeId}">------</span>
         </div>
         <div class="card-col-3">
-          <svg class="card-ring" viewBox="0 0 44 44" width="44" height="44" data-id="${a.id}">
+          <svg class="card-ring" viewBox="0 0 44 44" width="44" height="44" data-id="${safeId}">
             <circle cx="22" cy="22" r="19" fill="none" class="ring-bg"/>
             <circle cx="22" cy="22" r="19" fill="none" class="ring-fg"
-              data-id="${a.id}"
+              data-id="${safeId}"
               stroke-dasharray="119.381" stroke-dashoffset="119.381"
               transform="rotate(-90 22 22)"/>
-            <text x="22" y="22" data-id="${a.id}" class="ring-text">--</text>
+            <text x="22" y="22" data-id="${safeId}" class="ring-text">--</text>
           </svg>
         </div>
       </div>
@@ -84,12 +89,17 @@ export function setupAccountDialog(config) {
     btnAdd,
     toast,
     getAccounts,
+    isLocked,
     onAccountsChanged,
   } = config;
 
   let editId = null;
 
   function openEditDialog(id) {
+    if (isLocked()) {
+      toast("App is locked", true);
+      return;
+    }
     const accounts = getAccounts();
     const account = accounts.find((a) => a.id === id);
     if (!account) return;
@@ -108,6 +118,10 @@ export function setupAccountDialog(config) {
   }
 
   function openAddDialog() {
+    if (isLocked()) {
+      toast("App is locked", true);
+      return;
+    }
     editId = null;
     dialogTitle.textContent = "Add Account";
     dialogIssuer.value = "";
@@ -142,6 +156,10 @@ export function setupAccountDialog(config) {
   });
 
   dialogSubmit.addEventListener("click", async () => {
+    if (isLocked()) {
+      toast("App is locked", true);
+      return;
+    }
     const issuer = dialogIssuer.value.trim();
     const label = dialogLabel.value.trim();
     const secret = dialogSecret.value.trim();

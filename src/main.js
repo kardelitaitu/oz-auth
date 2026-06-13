@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import QRCode from "qrcode";
 import { refreshCodes, updateBars, startCountdown, stopCountdown } from "./js/totp.js";
 import { renderAccounts, setupAccountDialog } from "./js/accounts.js";
 import { createClipboardManager } from "./js/clipboard.js";
@@ -42,6 +43,15 @@ const deleteConfirmOverlay = document.getElementById("delete-confirm-overlay");
 const deleteConfirmMsg = document.getElementById("delete-confirm-msg");
 const deleteConfirmSubmit = document.getElementById("delete-confirm-submit");
 const deleteConfirmCancel = document.getElementById("delete-confirm-cancel");
+const qrPopup = document.getElementById("qr-popup");
+const qrCanvas = document.getElementById("qr-canvas");
+const qrTitle = document.getElementById("qr-title");
+const qrCloseBtn = document.getElementById("qr-close-btn");
+const backupConfirmOverlay = document.getElementById("backup-confirm-overlay");
+const backupPinInput = document.getElementById("backup-pin-input");
+const backupConfirmSubmit = document.getElementById("backup-confirm-submit");
+const backupConfirmCancel = document.getElementById("backup-confirm-cancel");
+const backupConfirmError = document.getElementById("backup-confirm-error");
 
 // ── Shared state ───────────────────────────────────────────
 const accounts = [];
@@ -49,6 +59,7 @@ const secondsRemaining = {};
 let lockTimeoutSeconds = 300;
 let clipboardClearSeconds = 30;
 let passwordProtected = false;
+let lockOnFocusLoss = false;
 let appName = "oz-auth";
 let appVersion = "0.1.0";
 
@@ -87,7 +98,10 @@ async function loadAccounts(query = "") {
 let pendingDeleteId = null;
 
 async function deleteAccount(id) {
-  if (lock.getLocked()) return;
+  if (lock.getLocked()) {
+    toast("App is locked", true);
+    return;
+  }
   try {
     await invoke("remove_account", { accountId: id });
     toast("Account deleted");
@@ -143,6 +157,7 @@ const accountDialog = setupAccountDialog({
   btnAdd,
   toast,
   getAccounts: () => accounts,
+  isLocked: () => lock.getLocked(),
   onAccountsChanged: reloadAccountsAndCodes,
 });
 
@@ -171,6 +186,39 @@ contextMenu.querySelector('[data-action="edit"]').addEventListener("click", () =
   hideContextMenu();
 });
 
+contextMenu.querySelector('[data-action="qr"]').addEventListener("click", async () => {
+  if (!contextAccountId) return;
+  if (lock.getLocked()) {
+    toast("App is locked", true);
+    hideContextMenu();
+    return;
+  }
+  const accountId = contextAccountId;
+  const account = accounts.find((a) => a.id === accountId);
+  hideContextMenu();
+  if (!account) return;
+  try {
+    const uri = await invoke("get_otpauth_uri", { accountId });
+    qrTitle.textContent = `${account.issuer} — ${account.label}`;
+    // Generate QR code on canvas
+    QRCode.toCanvas(qrCanvas, uri, {
+      width: 200,
+      margin: 1,
+      color: { dark: "#1e1e1e", light: "#ffffff" },
+    });
+    qrPopup.classList.remove("hidden");
+    qrCloseBtn.focus();
+  } catch (e) {
+    toast(typeof e === "string" ? e : "Failed to generate QR code", true);
+  }
+});
+
+qrCloseBtn.addEventListener("click", () => {
+  const ctx = qrCanvas.getContext("2d");
+  ctx.clearRect(0, 0, qrCanvas.width, qrCanvas.height);
+  qrPopup.classList.add("hidden");
+});
+
 contextMenu.querySelector('[data-action="delete"]').addEventListener("click", () => {
   if (contextAccountId) confirmDeleteAccount(contextAccountId);
   hideContextMenu();
@@ -178,6 +226,7 @@ contextMenu.querySelector('[data-action="delete"]').addEventListener("click", ()
 
 // ── Drag & drop ────────────────────────────────────────────
 async function onReorder(srcId, targetId) {
+  if (lock.getLocked()) return;
   const srcIdx = accounts.findIndex((a) => a.id === srcId);
   const tgtIdx = accounts.findIndex((a) => a.id === targetId);
   if (srcIdx === -1 || tgtIdx === -1 || srcIdx === tgtIdx) return;
@@ -223,7 +272,10 @@ const lock = createLockManager({
     await loadAccounts();      startCountdown(invoke, () => accounts, lock.getLocked, () => secondsRemaining, updateTrayIcon, toast);
       resetActivity();
     },
-    onLockStart: () => stopAutoLock(),
+    onLockStart: () => {
+      stopAutoLock();
+      clipboard.clearOnLock();
+    },
   onLockEnd: () => startAutoLock(),
 });
 
@@ -293,6 +345,7 @@ btnSettings.addEventListener("click", () => {
   openSettings({
     invoke,
     toast,
+    isLocked: () => lock.getLocked(),
     onPinSet: () => {
       passwordProtected = true;
       startAutoLock();
@@ -315,6 +368,9 @@ btnSettings.addEventListener("click", () => {
       lockTimeoutSeconds = seconds;
       startAutoLock();
     },
+    onFocusLossChanged: (enabled) => {
+      lockOnFocusLoss = enabled;
+    },
     lockTimeoutSeconds,
     clipboardClearSeconds,
     appName,
@@ -323,6 +379,11 @@ btnSettings.addEventListener("click", () => {
     settingsTitle,
     settingsBody,
     settingsCloseBtn,
+    backupConfirmOverlay,
+    backupPinInput,
+    backupConfirmSubmit,
+    backupConfirmCancel,
+    backupConfirmError,
   });
 });
 
@@ -393,6 +454,8 @@ document.addEventListener("keydown", async (e) => {
     dialog.classList.add("hidden");
     settingsOverlay.classList.add("hidden");
     deleteConfirmOverlay.classList.add("hidden");
+    qrPopup.classList.add("hidden");
+    backupConfirmOverlay.classList.add("hidden");
     pendingDeleteId = null;
     hideContextMenu();
     searchInput.blur();
@@ -438,6 +501,7 @@ document.addEventListener("keydown", async (e) => {
     clipboardClearSeconds = cfg.clipboard_clear_seconds || 30;
     clipboard.setClearSeconds(clipboardClearSeconds);
     passwordProtected = cfg.password_protected;
+    lockOnFocusLoss = cfg.lock_on_focus_loss ?? false;
 
     const isLocked = await lock.checkLock();
     if (!isLocked) {
@@ -454,6 +518,20 @@ document.addEventListener("keydown", async (e) => {
     });
 
     await trackWindow();
+
+    // Auto-lock on focus loss (if enabled)
+    const { getCurrentWindow: getWin } = await import("@tauri-apps/api/window");
+    const mainWindow = getWin();
+    mainWindow.onFocusChanged(async ({ payload: focused }) => {
+      if (!focused && lockOnFocusLoss && passwordProtected && !lock.getLocked()) {
+        try {
+          await invoke("lock");
+          lock.setLocked(true);
+          stopCountdown();
+          lock.show();
+        } catch (_) {}
+      }
+    });
   } catch (e) {
     console.error("init error:", e);
   }

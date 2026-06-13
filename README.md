@@ -9,7 +9,7 @@
   <a href="https://github.com/kardelitaitu/oz-auth/blob/main/LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License"></a>
   <img src="https://img.shields.io/badge/rust-1.80%2B-orange.svg" alt="Rust 1.80+">
   <img src="https://img.shields.io/badge/tauri-v2-7c3aed.svg" alt="Tauri v2">
-  <img src="https://img.shields.io/badge/tests-307%20passing-brightgreen.svg" alt="307 tests passing">
+  <img src="https://img.shields.io/badge/tests-476%20passing-brightgreen.svg" alt="476 tests passing">
   <img src="https://img.shields.io/badge/clippy-clean-brightgreen.svg" alt="Clippy clean">
   <img src="https://img.shields.io/badge/build-passing-brightgreen.svg" alt="Build passing">
 </p>
@@ -87,7 +87,8 @@ The output is at `src-tauri/target/release/oz-auth.exe`.
 |---------|-------------|
 | `cargo tauri dev` | Dev mode with hot-reload |
 | `npm run tauri` | Full production build |
-| `cargo test` | Run 307 tests |
+| `cargo test` | Run 476 Rust tests |
+| `npx vitest run` | Run 104 frontend tests |
 | `cargo clippy -- -D warnings` | Lint (strict) |
 | `cargo fmt --check` | Check formatting |
 | `cargo check` | Type-check only |
@@ -138,6 +139,7 @@ oz-auth assumes your desktop could be compromised. Every layer minimizes the win
 - All intermediate buffers zeroized after encrypt/decrypt
 - Frontend never sees raw secrets — only `AccountSummary` (no `secret` field) via IPC
 - `SetProcessMitigationPolicy` blocks dynamic code execution and remote image loads
+- In-memory cache with mtime staleness detection — avoids repeated disk reads
 
 ### In Transit (IPC)
 
@@ -174,7 +176,7 @@ oz-auth assumes your desktop could be compromised. Every layer minimizes the win
 | Frontend | Vanilla HTML/CSS/JS + Vite |
 | TOTP Engine | `totp-rs` v5 (RFC 6238) |
 | Encryption | `aes-gcm` v0.10 + `argon2` v0.5 |
-| Memory Security | `zeroize` v1.8 |
+| Memory Security | `zeroize` v1.9 |
 
 <details>
 <summary><strong>Project Structure</strong></summary>
@@ -184,13 +186,16 @@ tauri-authenticator/
 ├── src/                        # Frontend (WebView)
 │   ├── main.js                 # Orchestrator
 │   ├── js/                     # TOTP, accounts, clipboard, lock, settings, drag & drop
+│   │   └── __tests__/          # Vitest frontend tests (104 tests)
 │   └── styles/                 # Global styles, theme variables
 ├── src-tauri/                  # Backend (Rust)
 │   └── src/
-│       ├── commands/            # totp, accounts, auth
+│       ├── commands/            # totp, accounts, auth (with sub-modules: crud, qr)
 │       ├── storage/auth_file.rs # .auth file I/O + encrypt/decrypt
 │       ├── crypto.rs            # Argon2id + AES-256-GCM
 │       ├── tray.rs              # System tray (pie icon, menu)
+│       ├── audit.rs             # Signed audit trail with hash chain
+│       ├── test_utils.rs        # Shared test helpers
 │       └── diagnostics.rs       # Crash logging, event log
 ├── index.html                  # Vite entry point
 ├── package.json                # Frontend dependencies

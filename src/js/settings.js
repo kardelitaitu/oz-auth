@@ -10,10 +10,12 @@ export function openSettings(config) {
   const {
     invoke,
     toast,
+    isLocked,
     onPinSet,
     onLockNow,
     onClipboardClearSecondsChanged,
     onLockTimeoutChanged,
+    onFocusLossChanged,
     lockTimeoutSeconds,
     clipboardClearSeconds,
     appName,
@@ -22,6 +24,11 @@ export function openSettings(config) {
     settingsTitle,
     settingsBody,
     settingsCloseBtn,
+    backupConfirmOverlay,
+    backupPinInput,
+    backupConfirmSubmit,
+    backupConfirmCancel,
+    backupConfirmError,
   } = config;
 
   settingsOverlay.classList.remove("hidden");
@@ -77,7 +84,9 @@ export function openSettings(config) {
     html += `
       <div class="settings-section">
         <h3>Backup</h3>
-        <p style="font-size:12px;color:var(--btn-color);margin-bottom:4px;">Find <code>.auth</code> file next to the app .exe</p>
+        <button class="settings-btn" id="backup-keys-btn">Backup all keys to file</button>
+        <p style="font-size:11px;color:var(--warn-color);margin-top:6px;line-height:1.4;">⚠ Warning: This exports ALL secrets in plain text.<br>Keep the file secure and never share it.</p>
+        <p style="font-size:12px;color:var(--btn-color);margin-top:8px;">Find <code>.auth</code> file next to the app .exe</p>
         <p style="font-size:11px;color:var(--btn-color);line-height:1.4;">To export: copy the <code>.auth</code> file to a safe location.<br>To import: replace the <code>.auth</code> file and restart.</p>
       </div>
       <div class="settings-section">
@@ -89,6 +98,13 @@ export function openSettings(config) {
       </div>
       <div class="settings-section">
         <div class="settings-row">
+          <input type="checkbox" id="lock-on-focus-loss" />
+          <label for="lock-on-focus-loss" class="settings-row-label">Lock on focus loss</label>
+        </div>
+        <div class="settings-row-hint">Auto-lock when the window loses focus</div>
+      </div>
+      <div class="settings-section">
+        <div class="settings-row">
           <label class="settings-row-label">Auto-clear clipboard (seconds)</label>
           <input type="number" id="clipboard-clear" value="${clipboardClearSeconds}" min="0" max="300" step="5" class="settings-row-input" />
         </div>
@@ -96,14 +112,88 @@ export function openSettings(config) {
       </div>
     `;
 
+    // ── Audit Log section ────────────────────────────
+    // Intentionally not escaped — no user-controlled strings in the HTML template
+    html += `
+      <div class="settings-section">
+        <div class="settings-row">
+          <span class="settings-row-label">Audit Log</span>
+          <button class="settings-btn-small" id="audit-log-toggle">Show</button>
+        </div>
+        <div class="audit-log-container hidden" id="audit-log-container">
+          <div class="audit-log-status" id="audit-log-status">Loading...</div>
+          <div class="audit-log-table-wrap">
+            <table class="audit-log-table">
+              <thead>
+                <tr><th>#</th><th>Time</th><th>Event</th><th>Details</th></tr>
+              </thead>
+              <tbody id="audit-log-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Interpolated values are safe (numbers, backend-controlled strings),
+    // but escape any string fields for defense-in-depth.
+    const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]
+    );
     html += `
       <div class="settings-section settings-about">
-        <div class="about-name">${appName}</div>
-        <div class="about-version" id="about-version-link" title="View on GitHub">v${appVersion}</div>
+        <div class="about-name">${esc(appName)}</div>
+        <div class="about-version" id="about-version-link" title="View on GitHub">v${esc(appVersion)}</div>
       </div>
     `;
 
     settingsBody.innerHTML = html;
+
+    // ── Audit log toggle ──────────────────────────────
+    const auditToggle = document.getElementById("audit-log-toggle");
+    const auditContainer = document.getElementById("audit-log-container");
+    const auditBody = document.getElementById("audit-log-body");
+    const auditStatus = document.getElementById("audit-log-status");
+    let auditLoaded = false;
+
+    if (auditToggle) {
+      auditToggle.addEventListener("click", async () => {
+        const isHidden = auditContainer.classList.contains("hidden");
+        if (isHidden) {
+          auditContainer.classList.remove("hidden");
+          auditToggle.textContent = "Hide";
+          if (!auditLoaded) {
+            try {
+              const entries = await invoke("get_audit_log");
+              auditLoaded = true;
+              if (!entries || entries.length === 0) {
+                auditStatus.textContent = "No audit entries yet.";
+                return;
+              }
+              auditStatus.textContent = `${entries.length} entries (verified on load)`;
+              auditBody.innerHTML = entries.map((e) => {
+                const dt = new Date(e.ts * 1000);
+                // Format as YYYY-MM-DD HH:MM:SS
+                const pad = (n) => String(n).padStart(2, "0");
+                const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+                const catClass = `audit-cat audit-cat-${e.cat.replace(/[^a-z0-9]/g, "-")}`;
+                return `<tr>
+                  <td class="audit-seq">${e.seq}</td>
+                  <td class="audit-ts">${esc(dateStr)}</td>
+                  <td><span class="${catClass}">${esc(e.cat)}</span></td>
+                  <td class="audit-msg">${esc(e.msg)}</td>
+                </tr>`;
+              }).join("");
+            } catch (err) {
+              auditStatus.textContent = "Failed to load audit log.";
+              auditBody.innerHTML = `<tr><td colspan="4" style="color:var(--close-bg);text-align:center;padding:12px;">Error: ${esc(typeof err === "string" ? err : "Unknown error")}</td></tr>`;
+            }
+          }
+        } else {
+          auditContainer.classList.add("hidden");
+          auditToggle.textContent = "Show";
+        }
+      });
+    }
     const pinError = document.getElementById("pin-error");
 
     // Enter key on PIN inputs triggers the Set/Change button
@@ -118,11 +208,11 @@ export function openSettings(config) {
       });
     });
 
-    // Auto-save on input change (debounced)
-    let saveTimer;
+    // Auto-save on input change (debounced per field)
+    const saveTimers = {};
     async function saveField(field, value, callback) {
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(async () => {
+      if (saveTimers[field]) clearTimeout(saveTimers[field]);
+      saveTimers[field] = setTimeout(async () => {
         try {
           const cfg = await invoke("load_config");
           cfg[field] = value;
@@ -140,14 +230,89 @@ export function openSettings(config) {
       saveField("lock_timeout_seconds", val, onLockTimeoutChanged);
     });
 
+    const focusLossCb = document.getElementById("lock-on-focus-loss");
+    if (focusLossCb) {
+      focusLossCb.checked = cfg.lock_on_focus_loss === true;
+      focusLossCb.addEventListener("change", (e) => {
+        saveField("lock_on_focus_loss", e.target.checked, onFocusLossChanged);
+      });
+    }
+
     document.getElementById("clipboard-clear").addEventListener("input", (e) => {
       const val = parseInt(e.target.value, 10);
       if (isNaN(val) || val < 0 || val > 300) return;
       saveField("clipboard_clear_seconds", val, onClipboardClearSecondsChanged);
     });
 
+    // ── Backup all keys ──────────────────────────────
+    document.getElementById("backup-keys-btn").addEventListener("click", () => {
+      if (isLocked()) {
+        toast("App is locked", true);
+        return;
+      }
+      backupPinInput.value = "";
+      backupConfirmError.classList.add("hidden");
+      // Show/hide PIN input based on whether PIN is set
+      backupPinInput.style.display = hasPin ? "" : "none";
+      backupConfirmOverlay.classList.remove("hidden");
+      if (hasPin) {
+        backupPinInput.focus();
+      } else {
+        backupConfirmSubmit.focus();
+      }
+    });
+
+    backupConfirmCancel.addEventListener("click", () => {
+      backupConfirmOverlay.classList.add("hidden");
+      backupPinInput.value = "";
+    });
+
+    backupConfirmSubmit.addEventListener("click", async () => {
+      if (isLocked()) {
+        toast("App is locked", true);
+        return;
+      }
+      if (hasPin) {
+        const pin = backupPinInput.value;
+        if (!pin) {
+          backupConfirmError.textContent = "PIN required";
+          backupConfirmError.classList.remove("hidden");
+          return;
+        }
+        // Verify PIN before exporting
+        try {
+          await invoke("unlock", { pin });
+        } catch (e) {
+          backupConfirmError.textContent = "Wrong PIN";
+          backupConfirmError.classList.remove("hidden");
+          return;
+        }
+      }
+      try {
+        const path = await invoke("save_backup_file");
+        toast(`Backup saved — ${path}`);
+        backupConfirmOverlay.classList.add("hidden");
+        backupPinInput.value = "";
+        settingsOverlay.classList.add("hidden");
+      } catch (e) {
+        backupConfirmError.textContent = typeof e === "string" ? e : "Failed";
+        backupConfirmError.classList.remove("hidden");
+      }
+    });
+
+    backupPinInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        backupConfirmSubmit.click();
+      }
+    });
+
     if (hasPin) {
       document.getElementById("pin-change-btn").addEventListener("click", async () => {
+        if (isLocked()) {
+          toast("App is locked", true);
+          return;
+        }
         const oldPin = document.getElementById("pin-old").value;
         const newPin = document.getElementById("pin-new").value;
         const confirm = document.getElementById("pin-confirm").value;
@@ -177,6 +342,10 @@ export function openSettings(config) {
       });
     } else {
       document.getElementById("pin-set-btn").addEventListener("click", async () => {
+        if (isLocked()) {
+          toast("App is locked", true);
+          return;
+        }
         const newPin = document.getElementById("pin-new").value;
         const confirm = document.getElementById("pin-confirm").value;
         if (!newPin || !confirm) {

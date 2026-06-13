@@ -28,17 +28,17 @@ pub fn init() {
         eprintln!("{}", report);
         prev(info);
     }));
-
-    event("startup", "Application started");
 }
 
-/// Append a major event to the in-memory log buffer.
+/// Append a major event to the in-memory log buffer and audit trail.
 pub fn event(category: &str, message: &str) {
     let line = format!("[{}] {}: {}\n", timestamp(), category, message);
     if let Ok(mut guard) = LOG_BUF.lock() {
         let buf = guard.get_or_insert_with(String::new);
         buf.push_str(&line);
     }
+    // Also push to the signed audit trail
+    crate::audit::push(category, message);
 }
 
 /// Flush the in-memory log to a string for persisting (capped at ~10 KB).
@@ -94,9 +94,23 @@ mod tests {
     }
 
     #[test]
-    fn test_init_writes_startup_event() {
+    fn test_init_sets_up_panic_hook() {
+        // Verify init() sets up the crash handler without writing a startup event
+        // (the startup event is now pushed in lib.rs::run() after audit::restore())
         with_log_lock(|| {
             init();
+            let log = flush_to_log_str();
+            assert!(
+                log.is_empty(),
+                "init() should no longer push a startup event"
+            );
+        });
+    }
+
+    #[test]
+    fn test_startup_event_from_run() {
+        with_log_lock(|| {
+            event("startup", "Application started");
             let log = flush_to_log_str();
             assert!(log.contains("startup"));
             assert!(log.contains("Application started"));

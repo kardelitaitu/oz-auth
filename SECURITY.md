@@ -4,6 +4,7 @@
 
 | Version | Supported |
 |---------|-----------|
+| 0.1.4   | ✅ Current release |
 | 0.1.x   | ✅ Active development — security fixes land in `main` |
 
 ---
@@ -73,6 +74,8 @@ oz-auth is a **offline-first, memory-hardened** TOTP authenticator designed to p
 3. **Explicit zeroization** — Every buffer containing secret material (plaintext, key, salt, nonce, ciphertext, account secrets) is explicitly `zeroize()`'d after use.
 4. **PIN is not stored** — The PIN is never written to disk. Only the Argon2id salt is stored. The PIN is used only to derive the encryption key, then immediately zeroized.
 5. **Key-on-lock invariant** — When locked, `AppState.clear_key()` drops the `Zeroizing` wrapper, overwriting the encryption key in memory. The key must be re-derived from the PIN to unlock.
+6. **In-memory cache with staleness detection** — Decrypted `AuthData` is cached in `AppState` and validated against file mtime on each access. The cache is invalidated on every save, preventing stale reads. External file modifications (e.g., backup import) are detected via mtime comparison.
+7. **.auth file visible by design** — The `.auth` file is intentionally kept visible (not hidden) so users can find it for backups and portability.
 
 ---
 
@@ -98,7 +101,7 @@ oz-auth is a **offline-first, memory-hardened** TOTP authenticator designed to p
 
 ### What the User Controls
 
-- **The `.auth` data file** — it sits alongside the `.exe`. Users can back it up, encrypt it externally, or store it on a hardware token.
+- **The `.auth` data file** — it sits alongside the `.exe` (intentionally visible, not hidden). Users can back it up, copy it to another machine, or encrypt it externally. The `.auth` file is a self-contained JSON with version, config, encrypted accounts, and audit log.
 - **The PIN** — users choose the PIN length and complexity. There is no minimum length (beyond non-empty), no complexity requirement, and no lockout.
 - **Executable placement** — running from an encrypted volume (BitLocker, VeraCrypt) adds a layer of file-at-rest protection.
 
@@ -157,6 +160,29 @@ oz-auth uses `cargo-audit` and `cargo-deny` in CI to scan for known vulnerabilit
 
 ---
 
+## Security-Relevant Bug Fixes (v0.1.1)
+
+| Fix | Severity | Description |
+|-----|----------|-------------|
+| PIN change key zeroization order | Critical | `change_pin_impl` zeroed the new key before storing it, breaking the app after PIN change. Fixed by reordering: store key first, then zeroize old key. |
+| TOTP period=0 division-by-zero | High | `make_totp()` panics when `period=0`. Now validated and rejected before code generation. |
+| Silent data loss on lock | High | `set_lock_impl` used `unwrap_or_default()` on malformed JSON, wiping accounts during PIN setup. Now returns an explicit error. |
+| Clipboard auto-clear fires immediately | Medium | `setTimeout(..., 0)` wiped the code instantly when timeout was 0. Now only clears when timeout > 0. |
+| Settings save race condition | Medium | Shared debounce timer across inputs caused rapid changes to cancel earlier saves. Now uses per-field timers. |
+| Account IDs not HTML-escaped | Medium | Raw account IDs injected into HTML `data-id` attributes. Now escaped via `escapeHtml()`. |
+| parse_uri accepted hotp URIs | Low | `otpauth://hotp/...` URIs were silently accepted. Now only `totp` type is accepted. |
+
+---
+
+## Testing
+
+- **476 tests** across all Rust modules (unit + property-based) and JS frontend (Vitest)
+- Shared test infrastructure in `test_utils.rs` (test_app_state, cleanup_auth_file, with_fs_lock)
+- Proptest 1.11 compatibility (generic return types, `prop_assert!` Result handling)
+- Coverage: 100% on crypto, config, paths, otpauth, account models; 85-97% on commands; 55% on lib.rs (Tauri command wrappers require WebView2 for full coverage)
+
+---
+
 ## Cryptographic Primitives
 
 | Operation | Algorithm | Implementation |
@@ -165,7 +191,7 @@ oz-auth uses `cargo-audit` and `cargo-deny` in CI to scan for known vulnerabilit
 | Key derivation | Argon2id (default params) | `argon2` crate (v0.5) |
 | Random number generation | OS-provided CSPRNG | `rand::rngs::OsRng` |
 | TOTP code generation | RFC 6238 | `totp-rs` crate (v5) |
-| Memory zeroization | `Zeroize` trait | `zeroize` crate (v1.8) |
+| Memory zeroization | `Zeroize` trait | `zeroize` crate (v1.9) |
 
 ---
 

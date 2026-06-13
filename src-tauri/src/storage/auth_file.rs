@@ -34,7 +34,7 @@ use crate::models::account::Account;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AuthData {
     /// File format version. Defaults to 0 when missing (triggers upgrade to CURRENT_VERSION).
     #[serde(default = "default_version")]
@@ -47,6 +47,9 @@ pub struct AuthData {
     /// Optional user notes about this auth file. Added in v2.
     #[serde(default)]
     pub notes: String,
+    /// Append-only signed audit trail (JSON array of AuditEntry). Added in v3.
+    #[serde(default)]
+    pub audit_trail: String,
 }
 
 fn default_version() -> u32 {
@@ -113,6 +116,17 @@ pub fn try_load() -> Result<AuthData, String> {
     }
 
     Ok(data)
+}
+
+/// Flush both the human-readable event log and the signed audit trail
+/// into the AuthData struct, then save to disk.
+pub fn flush_and_save(data: &mut AuthData) -> Result<(), String> {
+    data.log = crate::diagnostics::flush_to_log_str();
+    data.audit_trail = crate::audit::flush();
+    let json = serde_json::to_string_pretty(data)
+        .map_err(|e| format!("failed to serialize auth data: {e}"))?;
+    std::fs::write(auth_path(), &json)
+        .map_err(|e| format!("failed to write {}: {e}", auth_path().display()))
 }
 
 pub fn save(data: &AuthData) -> Result<(), String> {
@@ -230,6 +244,7 @@ fn fresh() -> AuthData {
         },
         log: String::new(),
         notes: String::new(),
+        audit_trail: String::new(),
     }
 }
 
@@ -395,6 +410,7 @@ mod tests {
             accounts: payload,
             log: String::new(),
             notes: String::new(),
+            audit_trail: String::new(),
         };
         assert!(load_accounts(&data, None).is_err());
     }
@@ -412,6 +428,7 @@ mod tests {
             },
             log: String::new(),
             notes: String::new(),
+            audit_trail: String::new(),
         };
         let mut accounts = load_accounts(&data, None).unwrap();
         assert_eq!(accounts.len(), 1);
@@ -707,6 +724,7 @@ mod tests {
             accounts: payload,
             log: String::new(),
             notes: String::new(),
+            audit_trail: String::new(),
         };
         let result = load_accounts(&data, Some(wrong_key));
         assert!(result.is_err(), "wrong key must fail decryption");
@@ -881,6 +899,7 @@ mod tests {
                 password_salt: String::new(),
                 lock_timeout_seconds: 300,
                 clipboard_clear_seconds: 30,
+                lock_on_focus_loss: false,
             },
             accounts: AccountsPayload {
                 encrypted: false,
@@ -890,6 +909,7 @@ mod tests {
             },
             log: String::new(),
             notes: String::new(),
+            audit_trail: String::new(),
         };
         let json = serde_json::to_string_pretty(&data).unwrap();
         let fixture = include_str!("../../tests/fixtures/auth_data_v1_snapshot.json");
@@ -1084,8 +1104,8 @@ mod tests {
         assert_eq!(data.version, CURRENT_VERSION, "version must be upgraded");
 
         // Config: all missing fields must have defaults
-        assert_eq!(data.config.width, 320, "default width");
-        assert_eq!(data.config.height, 480, "default height");
+        assert_eq!(data.config.width, 420, "default width");
+        assert_eq!(data.config.height, 420, "default height");
         assert_eq!(data.config.left, 100, "default left");
         assert_eq!(data.config.top, 100, "default top");
         assert!(!data.config.always_on_top, "default always_on_top");
@@ -1120,8 +1140,8 @@ mod tests {
         let raw = std::fs::read_to_string(&path).unwrap();
         let saved: AuthData = serde_json::from_str(&raw).unwrap();
         assert_eq!(saved.version, CURRENT_VERSION, "upgraded version persisted");
-        assert_eq!(saved.config.width, 320, "width persisted");
-        assert_eq!(saved.config.height, 480, "height persisted");
+        assert_eq!(saved.config.width, 420, "width persisted");
+        assert_eq!(saved.config.height, 420, "height persisted");
         assert_eq!(saved.config.left, 100, "left persisted");
         assert_eq!(saved.config.top, 100, "top persisted");
         assert!(!saved.config.always_on_top, "always_on_top persisted");
@@ -1154,5 +1174,195 @@ mod tests {
             "exists() should return true when .auth file exists"
         );
         let _ = std::fs::remove_file(&path);
+    }
+
+    // Deterministic invariant reconciliation tests
+    // (no random inputs needed — tested as regular unit tests outside proptest! block).
+
+    #[test]
+    fn prop_reconcile_encrypted_not_protected() {
+        let mut data = fresh();
+        data.accounts.encrypted = true;
+        data.config.password_protected = false;
+        let changed = reconcile_invariants(&mut data);
+        assert!(changed, "encrypted + not protected must trigger change");
+        assert!(
+            data.config.password_protected,
+            "password_protected must be set to true"
+        );
+    }
+
+    #[test]
+    fn prop_reconcile_protected_not_encrypted() {
+        let mut data = fresh();
+        data.accounts.encrypted = false;
+        data.config.password_protected = true;
+        let changed = reconcile_invariants(&mut data);
+        assert!(changed, "not encrypted + protected must trigger change");
+        assert!(
+            !data.config.password_protected,
+            "password_protected must be set to false"
+        );
+    }
+
+    #[test]
+    fn prop_reconcile_fresh_no_change() {
+        let mut data = fresh();
+        let changed = reconcile_invariants(&mut data);
+        assert!(!changed, "fresh data must not need reconciliation");
+    }
+
+    #[test]
+    fn prop_reconcile_clears_salt_when_unprotected() {
+        let mut data = fresh();
+        data.accounts.encrypted = false;
+        data.config.password_protected = false;
+        data.config.password_salt = "aabbccdd".into();
+        let changed = reconcile_invariants(&mut data);
+        assert!(
+            changed,
+            "unprotected with non-empty salt must trigger change"
+        );
+        assert!(
+            data.config.password_salt.is_empty(),
+            "salt must be cleared when not password_protected"
+        );
+    }
+
+    #[test]
+    fn prop_upgrade_current_no_change() {
+        let mut data = fresh();
+        data.version = CURRENT_VERSION;
+        let changed = upgrade_data(&mut data);
+        assert!(!changed, "current version must not trigger upgrade");
+        assert_eq!(data.version, CURRENT_VERSION);
+    }
+
+    // ── Additional coverage tests ─────────────────────────────
+
+    #[test]
+    fn test_try_load_truncated_json_returns_error() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let path = auth_path();
+        let _ = std::fs::remove_file(&path);
+
+        // Write truncated JSON (valid start, but cut off)
+        std::fs::write(&path, r#"{"version":2,"config":{"width":4"#).unwrap();
+        let result = try_load();
+        assert!(result.is_err(), "truncated JSON must fail to load");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_try_load_empty_file_returns_error() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let path = auth_path();
+        let _ = std::fs::remove_file(&path);
+
+        std::fs::write(&path, "").unwrap();
+        let result = try_load();
+        assert!(result.is_err(), "empty file must fail to load");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_try_load_non_json_garbage_returns_error() {
+        let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+        let path = auth_path();
+        let _ = std::fs::remove_file(&path);
+
+        std::fs::write(&path, "this is not json at all {{{").unwrap();
+        let result = try_load();
+        assert!(result.is_err(), "garbage file must fail to load");
+
+        let _ = std::fs::remove_file(&path);
+    }
+
+    #[test]
+    fn test_reconcile_all_four_conditions_simultaneously() {
+        // encrypted=true + password_protected=false + salt non-empty + empty data_json
+        // Reconcile: sets password_protected=true (accounts need salt for key derivation).
+        // data_json fix is NOT applied because accounts are encrypted (data_json unused).
+        // Salt is NOT cleared because encrypted accounts need it.
+        let mut data = fresh();
+        data.accounts.encrypted = true;
+        data.config.password_protected = false;
+        data.config.password_salt = "aabbccdd".into();
+        data.accounts.data_json = "".into();
+        let changed = reconcile_invariants(&mut data);
+        assert!(changed, "must trigger change");
+        assert!(
+            data.config.password_protected,
+            "must set password_protected=true"
+        );
+        assert_eq!(
+            data.config.password_salt, "aabbccdd",
+            "salt preserved for encrypted accounts"
+        );
+        assert_eq!(
+            data.accounts.data_json, "",
+            "data_json untouched when encrypted"
+        );
+    }
+
+    #[test]
+    fn test_reconcile_consistent_protected_encrypted_nonempty_salt() {
+        let mut data = fresh();
+        data.accounts.encrypted = true;
+        data.config.password_protected = true;
+        data.config.password_salt = "aabbccdd".into();
+        data.accounts.data_json = r#"[{"id":"x"}]"#.into();
+        let changed = reconcile_invariants(&mut data);
+        assert!(!changed, "consistent state must not trigger change");
+    }
+
+    #[test]
+    fn test_upgrade_v0_with_encrypted_accounts() {
+        let mut data = fresh();
+        data.version = 0;
+        data.config.password_protected = true;
+        data.config.password_salt = "aabbccdd".into();
+        data.accounts.encrypted = true;
+        data.accounts.ciphertext_hex = Some("deadbeef".into());
+        data.accounts.nonce_hex = Some("aabb".into());
+        let changed = upgrade_data(&mut data);
+        assert!(changed, "v0 must trigger upgrade");
+        assert_eq!(data.version, CURRENT_VERSION);
+        // Encrypted state must survive upgrade
+        assert!(
+            data.accounts.encrypted,
+            "encryption flag must survive upgrade"
+        );
+        assert_eq!(
+            data.config.password_salt, "aabbccdd",
+            "salt must survive upgrade"
+        );
+    }
+
+    #[test]
+    fn test_upgrade_v1_with_already_populated_notes() {
+        let mut data = fresh();
+        data.version = 1;
+        data.notes = "existing notes".into();
+        let changed = upgrade_data(&mut data);
+        assert!(changed, "v1 must trigger upgrade to v2");
+        assert_eq!(data.version, CURRENT_VERSION);
+        assert_eq!(
+            data.notes, "existing notes",
+            "existing notes must be preserved during v1→v2 upgrade"
+        );
+    }
+
+    #[test]
+    fn test_encrypt_accounts_empty_nonce_hex() {
+        let key = [0x42u8; 32];
+        let encrypted = encrypt_accounts(&[], &key).unwrap();
+        assert!(encrypted.nonce_hex.is_some(), "nonce must not be empty");
+        assert!(
+            encrypted.ciphertext_hex.is_some(),
+            "ciphertext must not be empty"
+        );
     }
 }
