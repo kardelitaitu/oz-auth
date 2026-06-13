@@ -208,11 +208,11 @@ export function openSettings(config) {
       });
     });
 
-    // Auto-save on input change (debounced)
-    let saveTimer;
+    // Auto-save on input change (debounced per field)
+    const saveTimers = {};
     async function saveField(field, value, callback) {
-      clearTimeout(saveTimer);
-      saveTimer = setTimeout(async () => {
+      if (saveTimers[field]) clearTimeout(saveTimers[field]);
+      saveTimers[field] = setTimeout(async () => {
         try {
           const cfg = await invoke("load_config");
           cfg[field] = value;

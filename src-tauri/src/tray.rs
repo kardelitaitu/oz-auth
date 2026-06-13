@@ -358,4 +358,56 @@ mod tests {
             "at 100% most circle pixels should be visible: {visible_count}"
         );
     }
+
+    #[test]
+    fn test_generate_pie_icon_nan_treated_as_zero() {
+        // NaN.clamp(0.0, 100.0) produces NaN in Rust
+        // angle = (NaN / 100.0) * TAU - PI/2 = NaN
+        // pixel_angle <= NaN is always false → all background
+        let img = generate_pie_icon(f64::NAN).unwrap();
+        let bytes = img.rgba();
+        // All pixels inside the circle should be background color (not fill)
+        for y in 2..30 {
+            for x in 2..30 {
+                let dx = x as f64 - 16.0;
+                let dy = y as f64 - 16.0;
+                let dist = (dx * dx + dy * dy).sqrt();
+                if dist <= 13.0 {
+                    let idx = ((y * 32 + x) * 4) as usize;
+                    let alpha = bytes[idx + 3];
+                    if alpha > 0 {
+                        // Fill color is (93, 173, 226) — must NOT be present
+                        assert_ne!(
+                            bytes[idx], 93,
+                            "NaN input must not produce fill color at ({x},{y})"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_generate_pie_icon_infinity_treated_as_full() {
+        // f64::INFINITY.clamp(0.0, 100.0) returns 100.0 in Rust
+        let img = generate_pie_icon(f64::INFINITY).unwrap();
+        let full = generate_pie_icon(100.0).unwrap();
+        assert_eq!(
+            img.rgba(),
+            full.rgba(),
+            "infinity must produce same result as 100%"
+        );
+    }
+
+    #[test]
+    fn test_generate_pie_icon_negative_infinity_treated_as_zero() {
+        // f64::NEG_INFINITY.clamp(0.0, 100.0) returns 0.0 in Rust
+        let img = generate_pie_icon(f64::NEG_INFINITY).unwrap();
+        let zero = generate_pie_icon(0.0).unwrap();
+        assert_eq!(
+            img.rgba(),
+            zero.rgba(),
+            "negative infinity must produce same result as 0%"
+        );
+    }
 }

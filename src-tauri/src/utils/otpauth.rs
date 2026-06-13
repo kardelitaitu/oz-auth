@@ -1,6 +1,7 @@
 use crate::models::account::Algorithm;
 use base32::Alphabet;
 
+#[derive(Debug)]
 pub struct ParsedUri {
     pub issuer: String,
     pub label: String,
@@ -16,6 +17,17 @@ pub fn parse_uri(uri: &str) -> Result<ParsedUri, String> {
 
     if parsed.scheme() != "otpauth" {
         return Err("not an otpauth:// URI".to_string());
+    }
+
+    // Only accept totp type — hotp is counter-based and not supported
+    match parsed.host_str() {
+        Some("totp") => {}
+        Some(other) => {
+            return Err(format!(
+                "unsupported OTP type '{other}', only 'totp' is supported"
+            ))
+        }
+        None => return Err("missing OTP type in URI (expected otpauth://totp/...)".to_string()),
     }
 
     // Path is like "/Issuer:label" or "/label"
@@ -317,5 +329,44 @@ mod tests {
         let uri = "otpauth://totp/ACME:user@test.com?secret=INVALID&secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
         let parsed = parse_uri(uri).unwrap();
         assert!(!parsed.secret.is_empty(), "second secret should be used");
+    }
+
+    #[test]
+    fn test_parse_uri_rejects_hotp_scheme() {
+        let uri =
+            "otpauth://hotp/ACME:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&counter=0";
+        let err = parse_uri(uri).unwrap_err();
+        assert!(
+            err.contains("unsupported OTP type") || err.contains("hotp"),
+            "hotp must be rejected: {err}"
+        );
+    }
+
+    #[test]
+    fn test_parse_uri_rejects_missing_type() {
+        // URI with no host (e.g., otpauth:///label?secret=...)
+        let uri = "otpauth:///ACME:user@x.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ";
+        let err = parse_uri(uri).unwrap_err();
+        assert!(
+            err.contains("missing OTP type") || err.contains("unsupported"),
+            "missing type must fail: {err}"
+        );
+    }
+
+    #[test]
+    fn test_parse_uri_period_exceeding_u32_max() {
+        let uri = "otpauth://totp/ACME:user@test.com?secret=HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ&period=99999999999999999999";
+        let parsed = parse_uri(&uri).unwrap();
+        // Unparseable period defaults to 30
+        assert_eq!(parsed.period, 30, "unparseable period must default to 30");
+    }
+
+    #[test]
+    fn test_parse_uri_very_long_secret() {
+        // 1000-char base32 string
+        let long_secret = "A".repeat(1000);
+        let uri = format!("otpauth://totp/ACME:user@test.com?secret={long_secret}");
+        let parsed = parse_uri(&uri).unwrap();
+        assert!(!parsed.secret.is_empty(), "long secret must be parsed");
     }
 }

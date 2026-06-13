@@ -1316,4 +1316,332 @@ mod tests {
             super::super::cleanup_auth_file();
         });
     }
+
+    // ── Stress & edge case tests ──────────────────────────────
+
+    #[test]
+    fn test_add_and_list_100_accounts() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "[]".into();
+            crate::storage::save(&data).unwrap();
+
+            for i in 0..100 {
+                let account = add_account_impl(
+                    &format!("Issuer{i}"),
+                    &format!("user{i}@test.com"),
+                    "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ",
+                    None,
+                    None,
+                    None,
+                    &state,
+                )
+                .unwrap();
+                assert_eq!(account.issuer, format!("Issuer{i}"));
+            }
+
+            let results = list_accounts_impl(None, &state).unwrap();
+            assert_eq!(results.len(), 100, "must have 100 accounts");
+
+            // Search by label substring
+            let results = list_accounts_impl(Some("user50"), &state).unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].issuer, "Issuer50");
+
+            // Search by issuer substring
+            let results = list_accounts_impl(Some("Issuer9"), &state).unwrap();
+            assert_eq!(
+                results.len(),
+                11,
+                "Issuer9 + Issuer90..Issuer99 = 11 matches"
+            );
+
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_search_special_characters() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![
+                Account {
+                    id: "s1".into(),
+                    issuer: "C++ Developers".into(),
+                    label: "dev@c++.org".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![1],
+                    sort_order: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+                Account {
+                    id: "s2".into(),
+                    issuer: "AT&T".into(),
+                    label: "admin@at&t.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![2],
+                    sort_order: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+            ];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let results = list_accounts_impl(Some("C++"), &state).unwrap();
+            assert_eq!(results.len(), 1, "must match C++ in issuer");
+            assert_eq!(results[0].issuer, "C++ Developers");
+
+            let results = list_accounts_impl(Some("at&t"), &state).unwrap();
+            assert_eq!(results.len(), 1, "must match at&t case-insensitively");
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_search_empty_query_returns_all() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![Account {
+                id: "a1".into(),
+                issuer: "A".into(),
+                label: "a@test.com".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: vec![1],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let results = list_accounts_impl(Some(""), &state).unwrap();
+            assert_eq!(results.len(), 1, "empty query must return all");
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_update_preserves_other_accounts() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![
+                Account {
+                    id: "a1".into(),
+                    issuer: "First".into(),
+                    label: "f@test.com".into(),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![1],
+                    sort_order: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+                Account {
+                    id: "a2".into(),
+                    issuer: "Second".into(),
+                    label: "s@test.com".into(),
+                    algorithm: Algorithm::SHA256,
+                    digits: 8,
+                    period: 60,
+                    secret: vec![2],
+                    sort_order: 1,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                },
+            ];
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            // Update only first account
+            let updated =
+                update_account_impl("a1", Some("UpdatedFirst"), None, None, &state).unwrap();
+            assert_eq!(updated.issuer, "UpdatedFirst");
+
+            // Verify second account is unchanged
+            let results = list_accounts_impl(None, &state).unwrap();
+            assert_eq!(results.len(), 2);
+            let second = results.iter().find(|a| a.id == "a2").unwrap();
+            assert_eq!(second.issuer, "Second", "other accounts must be unchanged");
+            assert_eq!(second.digits, 8, "digits must be unchanged");
+            assert_eq!(second.period, 60, "period must be unchanged");
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_add_account_long_fields() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "[]".into();
+            crate::storage::save(&data).unwrap();
+
+            let long_issuer = "X".repeat(500);
+            let long_label = "y".repeat(500);
+            let account = add_account_impl(
+                &long_issuer,
+                &long_label,
+                "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ",
+                None,
+                None,
+                None,
+                &state,
+            )
+            .unwrap();
+            assert_eq!(account.issuer.len(), 500);
+            assert_eq!(account.label.len(), 500);
+
+            let results = list_accounts_impl(None, &state).unwrap();
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].issuer.len(), 500);
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_remove_last_account_leaves_empty() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "[]".into();
+            crate::storage::save(&data).unwrap();
+
+            let acct = add_account_impl(
+                "Only",
+                "only@test.com",
+                "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ",
+                None,
+                None,
+                None,
+                &state,
+            )
+            .unwrap();
+            remove_account_impl(&acct.id, &state).unwrap();
+
+            let results = list_accounts_impl(None, &state).unwrap();
+            assert!(results.is_empty());
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_add_account_default_params() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "[]".into();
+            crate::storage::save(&data).unwrap();
+
+            let account = add_account_impl(
+                "Defaults",
+                "d@test.com",
+                "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ",
+                None,
+                None,
+                None,
+                &state,
+            )
+            .unwrap();
+            assert!(matches!(account.algorithm, Algorithm::SHA1));
+            assert_eq!(account.digits, 6, "default digits must be 6");
+            assert_eq!(account.period, 30, "default period must be 30");
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_add_account_all_algorithms() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "[]".into();
+            crate::storage::save(&data).unwrap();
+
+            for algo_name in &["SHA1", "SHA256", "SHA512"] {
+                let account = add_account_impl(
+                    algo_name,
+                    "test@test.com",
+                    "HXDMVJECJJWSRB3HWIZR4IFUGFTMXBOZ",
+                    Some(algo_name),
+                    None,
+                    None,
+                    &state,
+                )
+                .unwrap();
+                match *algo_name {
+                    "SHA1" => assert!(matches!(account.algorithm, Algorithm::SHA1)),
+                    "SHA256" => assert!(matches!(account.algorithm, Algorithm::SHA256)),
+                    "SHA512" => assert!(matches!(account.algorithm, Algorithm::SHA512)),
+                    _ => unreachable!(),
+                }
+            }
+            super::super::cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_update_account_multiple_accounts_only_one_changes() {
+        super::super::with_fs_lock(|| {
+            super::super::cleanup_auth_file();
+            let state = super::super::test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts: Vec<Account> = (0..10)
+                .map(|i| Account {
+                    id: format!("id-{i}"),
+                    issuer: format!("Issuer{i}"),
+                    label: format!("user{i}@test.com"),
+                    algorithm: Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: vec![i as u8],
+                    sort_order: i,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                })
+                .collect();
+            save_accounts(&mut data, &accounts, None).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            // Update only id-5
+            let updated = update_account_impl("id-5", Some("CHANGED"), None, None, &state).unwrap();
+            assert_eq!(updated.issuer, "CHANGED");
+
+            let results = list_accounts_impl(None, &state).unwrap();
+            assert_eq!(results.len(), 10);
+            for r in &results {
+                if r.id == "id-5" {
+                    assert_eq!(r.issuer, "CHANGED");
+                } else {
+                    let idx: usize = r.id.strip_prefix("id-").unwrap().parse().unwrap();
+                    assert_eq!(
+                        r.issuer,
+                        format!("Issuer{idx}"),
+                        "other accounts must be untouched"
+                    );
+                }
+            }
+            super::super::cleanup_auth_file();
+        });
+    }
 }

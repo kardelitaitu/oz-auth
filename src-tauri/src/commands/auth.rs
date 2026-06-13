@@ -148,7 +148,7 @@ fn change_pin_impl(old_pin: &str, new_pin: &str, state: &AppState) -> Result<(),
 
     let new_salt = crate::crypto::generate_salt();
     let new_salt_hex = hex::encode(*new_salt);
-    let new_key = crate::crypto::derive_key(new_pin, &*new_salt)?;
+    let mut new_key = crate::crypto::derive_key(new_pin, &*new_salt)?;
     data.accounts = encrypt_accounts(&accounts, &new_key)?;
     data.config.password_salt = new_salt_hex;
     crate::storage::flush_and_save(&mut data)?;
@@ -156,8 +156,9 @@ fn change_pin_impl(old_pin: &str, new_pin: &str, state: &AppState) -> Result<(),
     // Store the new key BEFORE zeroizing — set_key takes ownership
     state.set_key(new_key)?;
 
-    // Zeroize the old key and account secrets after use
+    // Zeroize the old key, new key, and account secrets after use
     old_key.zeroize();
+    new_key.zeroize();
     for a in &mut accounts {
         a.secret.zeroize();
     }
@@ -1599,6 +1600,423 @@ mod tests {
                 0,
                 "rate limit counter must reset on successful unlock"
             );
+            cleanup_auth_file();
+        });
+    }
+
+    // ── PIN lifecycle edge cases ─────────────────────────────
+
+    #[test]
+    fn test_set_lock_then_add_accounts_then_unlock() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // Set PIN on empty store
+            set_lock_impl("pin123", &state).unwrap();
+            assert!(state.has_key());
+
+            // Verify store is empty
+            let loaded = crate::storage::try_load().unwrap();
+            let key = state.get_key().unwrap().map(|k| *k);
+            let accounts: Vec<crate::models::account::Account> =
+                crate::storage::load_accounts(&loaded, key).unwrap();
+            assert!(accounts.is_empty());
+
+            // Lock
+            lock_impl(&state).unwrap();
+            assert!(!state.has_key());
+
+            // Unlock with correct PIN
+            let result = unlock_impl("pin123", &state).unwrap();
+            assert!(result);
+            assert!(state.has_key());
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_change_pin_multiple_times() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let _key = seed_encrypted_auth();
+            state.set_key(*_key).unwrap();
+
+            // Change PIN: mypin → second → third
+            change_pin_impl("mypin", "second", &state).unwrap();
+            let loaded = crate::storage::try_load().unwrap();
+            let salt = hex::decode(&loaded.config.password_salt).unwrap();
+            let mut k2 = crate::crypto::derive_key("second", &salt).unwrap();
+            assert!(
+                crate::storage::decrypt_accounts(&loaded.accounts, &k2).is_ok(),
+                "second PIN must work"
+            );
+            k2.zeroize();
+
+            // Now change again
+            change_pin_impl("second", "third", &state).unwrap();
+            let loaded = crate::storage::try_load().unwrap();
+            let salt = hex::decode(&loaded.config.password_salt).unwrap();
+            let mut k3 = crate::crypto::derive_key("third", &salt).unwrap();
+            assert!(
+                crate::storage::decrypt_accounts(&loaded.accounts, &k3).is_ok(),
+                "third PIN must work"
+            );
+            k3.zeroize();
+
+            // Old PINs must fail
+            let mut k1 = crate::crypto::derive_key("mypin", &salt).unwrap();
+            assert!(
+                crate::storage::decrypt_accounts(&loaded.accounts, &k1).is_err(),
+                "mypin must no longer work"
+            );
+            k1.zeroize();
+            let mut k2_old = crate::crypto::derive_key("second", &salt).unwrap();
+            assert!(
+                crate::storage::decrypt_accounts(&loaded.accounts, &k2_old).is_err(),
+                "second must no longer work"
+            );
+            k2_old.zeroize();
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_unlock_when_not_protected_fails() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            data.config.password_protected = false;
+            crate::storage::save(&data).unwrap();
+            let err = unlock_impl("anypin", &state).unwrap_err();
+            assert!(err.contains("not set"), "error: {err}");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_lock_then_unlock_wrong_pin_then_correct_pin() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let _key = seed_encrypted_auth();
+            state.set_key(*_key).unwrap();
+            lock_impl(&state).unwrap();
+            assert!(!state.has_key());
+
+            // Wrong PIN
+            let result = unlock_impl("wrong", &state).unwrap();
+            assert!(!result);
+            assert!(!state.has_key());
+
+            // Expire cooldown
+            *state.last_attempt.lock().unwrap() =
+                Some(std::time::Instant::now() - std::time::Duration::from_secs(2));
+
+            // Correct PIN
+            let result = unlock_impl("mypin", &state).unwrap();
+            assert!(result);
+            assert!(state.has_key());
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_set_lock_empty_accounts() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "[]".into();
+            crate::storage::save(&data).unwrap();
+            set_lock_impl("pin", &state).unwrap();
+            let loaded = crate::storage::try_load().unwrap();
+            assert!(loaded.config.password_protected);
+            assert!(loaded.accounts.encrypted);
+            // Decrypt should yield empty vec
+            let salt = hex::decode(&loaded.config.password_salt).unwrap();
+            let mut key = crate::crypto::derive_key("pin", &salt).unwrap();
+            let accounts = crate::storage::decrypt_accounts(&loaded.accounts, &key).unwrap();
+            assert!(accounts.is_empty());
+            key.zeroize();
+            cleanup_auth_file();
+        });
+    }
+
+    // ── Backup/restore integrity ─────────────────────────────
+
+    #[test]
+    fn test_backup_restore_preserves_accounts() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let _state = test_app_state();
+
+            // Create accounts
+            let mut data = crate::storage::try_load().unwrap();
+            let accounts = vec![crate::models::account::Account {
+                id: "backup-test".into(),
+                issuer: "BackupIssuer".into(),
+                label: "backup@test.com".into(),
+                algorithm: crate::models::account::Algorithm::SHA256,
+                digits: 8,
+                period: 60,
+                secret: vec![10, 20, 30, 40],
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            }];
+            data.accounts.data_json = serde_json::to_string(&accounts).unwrap();
+            crate::storage::save(&data).unwrap();
+
+            // Export backup
+            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            export_backup(backup_path.to_string_lossy().to_string()).unwrap();
+
+            // Wipe original
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "[]".into();
+            crate::storage::save(&data).unwrap();
+            let loaded = crate::storage::try_load().unwrap();
+            let empty: Vec<crate::models::account::Account> =
+                serde_json::from_str(&loaded.accounts.data_json).unwrap();
+            assert!(empty.is_empty(), "original must be empty");
+
+            // Restore backup
+            let raw = std::fs::read_to_string(&backup_path).unwrap();
+            let _backup: crate::storage::auth_file::AuthData = serde_json::from_str(&raw).unwrap();
+            let dest = crate::paths::auth_path();
+            std::fs::copy(&backup_path, &dest).unwrap();
+
+            // Verify restored
+            let restored = crate::storage::try_load().unwrap();
+            let restored_accounts: Vec<crate::models::account::Account> =
+                serde_json::from_str(&restored.accounts.data_json).unwrap();
+            assert_eq!(restored_accounts.len(), 1);
+            assert_eq!(restored_accounts[0].id, "backup-test");
+            assert_eq!(restored_accounts[0].issuer, "BackupIssuer");
+            assert_eq!(restored_accounts[0].digits, 8);
+            assert_eq!(restored_accounts[0].period, 60);
+            assert_eq!(restored_accounts[0].secret, vec![10, 20, 30, 40]);
+
+            let _ = std::fs::remove_file(&backup_path);
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_export_backup_idempotent() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let data = crate::storage::try_load().unwrap();
+            crate::storage::save(&data).unwrap();
+
+            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            export_backup(backup_path.to_string_lossy().to_string()).unwrap();
+            let first = std::fs::read_to_string(&backup_path).unwrap();
+
+            // Export again — should be identical
+            export_backup(backup_path.to_string_lossy().to_string()).unwrap();
+            let second = std::fs::read_to_string(&backup_path).unwrap();
+            assert_eq!(first, second, "double export must be identical");
+
+            let _ = std::fs::remove_file(&backup_path);
+            cleanup_auth_file();
+        });
+    }
+
+    // ── Additional coverage tests ─────────────────────────────
+
+    #[test]
+    fn test_unlock_full_rate_limit_expiry_then_success() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let _key = seed_encrypted_auth();
+
+            // After 1 wrong attempt, rate limit kicks in (1s cooldown).
+            // Subsequent wrong calls are rejected by rate-limit before
+            // reaching record_failed_attempt. So manually simulate 3 failures.
+            let _ = unlock_impl("wrong", &state);
+            // Manually set 3 failures to simulate multiple wrong attempts
+            *state.failed_attempts.lock().unwrap() = 3;
+            // Set last_attempt to 1s ago (within 4s cooldown for 3 failures)
+            *state.last_attempt.lock().unwrap() =
+                Some(std::time::Instant::now() - std::time::Duration::from_secs(1));
+
+            // Immediately try correct PIN → must be rate-limited
+            let err = unlock_impl("mypin", &state).unwrap_err();
+            assert!(
+                err.contains("too many attempts"),
+                "should be rate-limited: {err}"
+            );
+
+            // Wind clock past the 4s cooldown (2^(3-1) = 4s)
+            *state.last_attempt.lock().unwrap() =
+                Some(std::time::Instant::now() - std::time::Duration::from_secs(5));
+
+            // Now correct PIN must succeed and reset the counter
+            let result = unlock_impl("mypin", &state).unwrap();
+            assert!(
+                result,
+                "correct PIN must succeed after full cooldown expiry"
+            );
+            assert!(state.has_key(), "key must be set");
+            assert_eq!(
+                *state.failed_attempts.lock().unwrap(),
+                0,
+                "rate limit must reset on success"
+            );
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_change_pin_corrupted_accounts_during_decrypt() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let salt = crate::crypto::generate_salt();
+            let key = crate::crypto::derive_key("oldpin", &*salt).unwrap();
+            let mut data = crate::storage::try_load().unwrap();
+            // Write valid encrypted accounts
+            data.accounts = crate::storage::encrypt_accounts(
+                &[crate::models::account::Account {
+                    id: "acct1".into(),
+                    issuer: "Test".into(),
+                    label: "test@test.com".into(),
+                    algorithm: crate::models::account::Algorithm::SHA1,
+                    digits: 6,
+                    period: 30,
+                    secret: b"1234567890123456".to_vec(),
+                    sort_order: 0,
+                    created_at: chrono::Utc::now(),
+                    updated_at: chrono::Utc::now(),
+                }],
+                &key,
+            )
+            .unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = hex::encode(*salt);
+            crate::storage::save(&data).unwrap();
+            state.set_key(key).unwrap();
+
+            // Now corrupt the encrypted payload (make ciphertext invalid)
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.ciphertext_hex = Some("deadbeef".into());
+            crate::storage::save(&data).unwrap();
+
+            // change_pin should fail with wrong PIN error (constant-time: same as wrong PIN)
+            let err = change_pin_impl("oldpin", "newpin", &state).unwrap_err();
+            assert!(
+                err.contains("wrong current PIN"),
+                "corrupted accounts must return wrong PIN error: {err}"
+            );
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_import_backup_self_copy() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let _state = test_app_state();
+
+            // Set up a non-empty auth file
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json =
+                r#"[{"id":"x","issuer":"I","label":"L","algorithm":"SHA1","digits":6,"period":30,"secret":[1,2,3],"sort_order":0,"created_at":"2024-01-01T00:00:00Z","updated_at":"2024-01-01T00:00:00Z"}]"#
+                    .into();
+            crate::storage::save(&data).unwrap();
+
+            // Import from the same path as the auth file (self-copy)
+            let auth_path = crate::paths::auth_path().to_string_lossy().to_string();
+            // This should either succeed (no-op copy) or fail gracefully — must not panic
+            let result = import_backup_impl(&auth_path, &_state);
+            // Self-copy is valid on Windows (copy file over itself) — may succeed or fail depending on OS
+            // The important thing is it doesn't corrupt the data
+            if result.is_ok() {
+                let reloaded = crate::storage::try_load().unwrap();
+                let accounts: Vec<crate::models::account::Account> =
+                    serde_json::from_str(&reloaded.accounts.data_json).unwrap();
+                assert_eq!(accounts.len(), 1, "self-copy must not lose data");
+            }
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_import_backup_wrong_schema() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let _state = test_app_state();
+
+            // Write valid JSON that doesn't match AuthData schema
+            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            std::fs::write(&backup_path, r#"{"wrong_key": true, "numbers": [1, 2, 3]}"#).unwrap();
+
+            let err = import_backup_impl(&backup_path.to_string_lossy(), &_state).unwrap_err();
+            assert!(
+                err.contains("failed to parse") || err.contains("invalid"),
+                "wrong schema must fail: {err}"
+            );
+
+            let _ = std::fs::remove_file(&backup_path);
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_unlock_impl_salt_hex_decode_failure_through_unlock() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+
+            // Set up with valid encrypted data
+            let salt = crate::crypto::generate_salt();
+            let key = crate::crypto::derive_key("mypin", &*salt).unwrap();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
+            data.config.password_protected = true;
+            data.config.password_salt = hex::encode(*salt);
+            crate::storage::save(&data).unwrap();
+
+            // Now corrupt the salt to invalid hex
+            let mut data = crate::storage::try_load().unwrap();
+            data.config.password_salt = "zz_not_hex".into();
+            crate::storage::save(&data).unwrap();
+
+            // unlock_impl must fail with salt decode error
+            let err = unlock_impl("mypin", &state).unwrap_err();
+            assert!(
+                err.contains("invalid salt") || err.contains("hex"),
+                "salt decode failure must propagate: {err}"
+            );
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_lock_then_is_locked_consistency() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let _key = seed_encrypted_auth();
+
+            // Initially locked (key not set in fresh state)
+            assert!(is_locked_impl(&state).unwrap());
+
+            // Unlock
+            unlock_impl("mypin", &state).unwrap();
+            assert!(!is_locked_impl(&state).unwrap());
+
+            // Lock
+            lock_impl(&state).unwrap();
+            assert!(is_locked_impl(&state).unwrap());
+
+            // Unlock again
+            unlock_impl("mypin", &state).unwrap();
+            assert!(!is_locked_impl(&state).unwrap());
             cleanup_auth_file();
         });
     }

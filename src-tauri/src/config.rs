@@ -328,4 +328,150 @@ mod tests {
         let cfg: Config = serde_json::from_str(json).unwrap();
         assert_eq!(cfg.lock_timeout_seconds, 0, "0 disables auto-lock");
     }
+
+    // ── Migration edge cases ────────────────────────────────
+
+    #[test]
+    fn test_migration_minutes_only() {
+        let json = r#"{"lock_timeout_minutes": 5}"#;
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.lock_timeout_seconds, 300, "5 minutes = 300 seconds");
+    }
+
+    #[test]
+    fn test_migration_seconds_only() {
+        let json = r#"{"lock_timeout_seconds": 120}"#;
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.lock_timeout_seconds, 120);
+    }
+
+    #[test]
+    fn test_migration_minutes_zero() {
+        let json = r#"{"lock_timeout_minutes": 0}"#;
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            cfg.lock_timeout_seconds, 0,
+            "0 minutes = 0 seconds (disabled)"
+        );
+    }
+
+    #[test]
+    fn test_migration_minutes_large() {
+        let json = r#"{"lock_timeout_minutes": 1440}"#;
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.lock_timeout_seconds, 86400, "1440 minutes = 24 hours");
+    }
+
+    #[test]
+    fn test_empty_json_object_uses_defaults() {
+        let json = r#"{}"#;
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.width, 420);
+        assert_eq!(cfg.height, 420);
+        assert_eq!(cfg.left, 100);
+        assert_eq!(cfg.top, 100);
+        assert!(!cfg.always_on_top);
+        assert_eq!(cfg.theme, "dark");
+        assert!(!cfg.password_protected);
+        assert!(cfg.password_salt.is_empty());
+        assert_eq!(cfg.lock_timeout_seconds, 300);
+        assert_eq!(cfg.clipboard_clear_seconds, 30);
+    }
+
+    #[test]
+    fn test_unknown_fields_ignored() {
+        let json = r#"{"width":800,"unknown":"value","another":42}"#;
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(cfg.width, 800);
+        assert_eq!(cfg.height, 420, "unknown fields must not break parsing");
+    }
+
+    #[test]
+    fn test_clipboard_clear_seconds_zero() {
+        let cfg = Config {
+            clipboard_clear_seconds: 0,
+            ..Config::default()
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        let restored: Config = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.clipboard_clear_seconds, 0, "0 = disabled");
+    }
+
+    #[test]
+    fn test_lock_timeout_seconds_zero() {
+        let cfg = Config {
+            lock_timeout_seconds: 0,
+            ..Config::default()
+        };
+        let json = serde_json::to_string(&cfg).unwrap();
+        let restored: Config = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.lock_timeout_seconds, 0, "0 = disabled");
+    }
+
+    #[test]
+    fn test_config_all_fields_roundtrip() {
+        let cfg = Config {
+            width: 640,
+            height: 480,
+            left: -100,
+            top: 200,
+            always_on_top: true,
+            theme: "light".to_string(),
+            password_protected: true,
+            password_salt: "aabbccdd".to_string(),
+            lock_timeout_seconds: 600,
+            clipboard_clear_seconds: 60,
+            lock_on_focus_loss: true,
+        };
+        let json = serde_json::to_string_pretty(&cfg).unwrap();
+        let restored: Config = serde_json::from_str(&json).unwrap();
+        assert_eq!(restored.width, 640);
+        assert_eq!(restored.height, 480);
+        assert_eq!(restored.left, -100);
+        assert_eq!(restored.top, 200);
+        assert!(restored.always_on_top);
+        assert_eq!(restored.theme, "light");
+        assert!(restored.password_protected);
+        assert_eq!(restored.password_salt, "aabbccdd");
+        assert_eq!(restored.lock_timeout_seconds, 600);
+        assert_eq!(restored.clipboard_clear_seconds, 60);
+        assert!(restored.lock_on_focus_loss);
+    }
+
+    #[test]
+    fn test_config_float_lock_timeout_minutes_fails() {
+        let json = r#"{"lock_timeout_minutes": 10.5}"#;
+        let result = serde_json::from_str::<Config>(json);
+        assert!(
+            result.is_err(),
+            "float lock_timeout_minutes must fail to parse: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_config_negative_lock_timeout_seconds_fails() {
+        let json = r#"{"lock_timeout_seconds": -1}"#;
+        let result = serde_json::from_str::<Config>(json);
+        assert!(
+            result.is_err(),
+            "negative lock_timeout_seconds must fail: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_config_width_height_as_float_fails() {
+        let json = r#"{"width": 420.5, "height": 480.5}"#;
+        let result = serde_json::from_str::<Config>(json);
+        assert!(result.is_err(), "float width/height must fail: {result:?}");
+    }
+
+    #[test]
+    fn test_config_lock_timeout_zero_disables() {
+        let json = r#"{"lock_timeout_seconds": 0}"#;
+        let cfg: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            cfg.lock_timeout_seconds, 0,
+            "zero timeout must be preserved"
+        );
+    }
 }

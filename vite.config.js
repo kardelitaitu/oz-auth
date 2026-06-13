@@ -1,3 +1,4 @@
+/// <reference types="vitest/config" />
 import { defineConfig } from "vite";
 
 export default defineConfig({
@@ -12,5 +13,10 @@ export default defineConfig({
     target: "esnext",
     minify: !process.env.TAURI_DEBUG ? "esbuild" : false,
     sourcemap: !!process.env.TAURI_DEBUG,
+  },
+  test: {
+    environment: "happy-dom",
+    include: ["src/js/__tests__/**/*.test.js"],
+    setupFiles: ["src/js/__tests__/setup.js"],
   },
 });

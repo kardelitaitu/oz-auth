@@ -176,14 +176,14 @@ pub fn clear() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use proptest::prelude::*;
 
-    fn with_lock(f: impl FnOnce()) {
+    fn with_lock<R>(f: impl FnOnce() -> R) -> R {
         let _lock = crate::diagnostics::LOG_BUF_TEST_MUTEX
             .lock()
             .unwrap_or_else(|e| e.into_inner());
-        // Clear audit trail before test
         clear();
-        f();
+        f()
     }
 
     #[test]
@@ -376,16 +376,229 @@ mod tests {
     #[test]
     fn test_flush_truncates_at_1000() {
         with_lock(|| {
-            for i in 0..1100 {
+            let start_seq = snapshot().len() as u64;
+            for i in 0..1100u64 {
                 push("bulk", &format!("event {i}"));
             }
             let json = flush();
             let restored: Vec<AuditEntry> = serde_json::from_str(&json).unwrap();
             assert_eq!(restored.len(), 1000, "must truncate to 1000 entries");
-            assert_eq!(restored[0].seq, 100, "first kept entry has seq=100");
-            assert_eq!(restored[999].seq, 1099, "last kept entry has seq=1099");
+            // First kept entry should be 1100-1000=100 events after start
+            assert_eq!(
+                restored[0].seq,
+                start_seq + 100,
+                "first kept entry must be 100 past start"
+            );
+            assert_eq!(
+                restored[999].seq,
+                start_seq + 1099,
+                "last kept entry must be 1099 past start"
+            );
             // Chain must still be valid after truncation
             assert!(verify_chain(&restored).is_ok());
+        });
+    }
+
+    // ── Property-based tests (proptest) ─────────────────────────
+
+    /// Helper strategy: generate a (cat, msg) pair.
+    fn arb_event() -> impl Strategy<Value = (String, String)> {
+        ("[a-z]{0,16}", "[ -~]{0,200}")
+    }
+
+    proptest! {
+        /// Any sequence of events pushed to the audit trail produces a valid hash chain.
+        #[test]
+        fn prop_verify_chain_valid(events in prop::collection::vec(arb_event(), 0..100)) {
+            let _ = with_lock(|| {
+                clear();
+                for (cat, msg) in &events {
+                    push(cat, msg);
+                }
+                let s = snapshot();
+                prop_assert!(verify_chain(&s).is_ok(),
+                    "chain must be valid for {} entries", events.len());
+                Ok::<_, proptest::test_runner::TestCaseError>(())
+            });
+        }
+
+        /// compute_hash is deterministic: same entry → same hash.
+        #[test]
+        fn prop_hash_deterministic(
+            seq: u64, ts: u64,
+            cat in "[ -~]{0,100}",
+            msg in "[ -~]{0,200}",
+            prev_hash in "[0-9a-f]{0,64}",
+        ) {
+            let entry = AuditEntry { seq, ts, cat, msg, prev_hash };
+            let h1 = compute_hash(&entry);
+            let h2 = compute_hash(&entry);
+            prop_assert_eq!(h1, h2, "hash must be deterministic");
+        }
+
+        /// Different entries have different hashes (no collisions in practice).
+        #[test]
+        fn prop_hash_differs_for_distinct_entries(
+            cat1 in "[ -~]{0,50}", msg1 in "[ -~]{0,100}",
+            cat2 in "[ -~]{0,50}", msg2 in "[ -~]{0,100}",
+        ) {
+            prop_assume!(cat1 != cat2 || msg1 != msg2,
+                "entries must differ in cat or msg");
+            let e1 = AuditEntry {
+                seq: 0, ts: 0, cat: cat1, msg: msg1,
+                prev_hash: "0".into(),
+            };
+            let e2 = AuditEntry {
+                seq: 0, ts: 0, cat: cat2, msg: msg2,
+                prev_hash: "0".into(),
+            };
+            prop_assert_ne!(compute_hash(&e1), compute_hash(&e2),
+                "distinct entries must have different hashes");
+        }
+
+        /// Push → flush → restore → snapshot preserves all entries.
+        #[test]
+        fn prop_push_flush_restore_roundtrip(events in prop::collection::vec(arb_event(), 0..50)) {
+            let _ = with_lock(|| {
+                clear();
+                for (cat, msg) in &events {
+                    push(cat, msg);
+                }
+                let json = flush();
+                // After flush, trail is empty
+                prop_assert!(snapshot().is_empty(), "trail must be empty after flush");
+                clear();
+                restore(&json);
+                let s = snapshot();
+                prop_assert_eq!(s.len(), events.len(),
+                    "all {} events must be restored", events.len());
+                // Chain must still be valid after restore
+                prop_assert!(verify_chain(&s).is_ok(),
+                    "restored chain must be valid");
+                // Entries appear in order
+                for (i, (cat, msg)) in events.iter().enumerate() {
+                    prop_assert_eq!(&s[i].cat, cat,
+                        "entry {} cat mismatch", i);
+                    prop_assert_eq!(&s[i].msg, msg,
+                        "entry {} msg mismatch", i);
+                }
+                Ok::<_, proptest::test_runner::TestCaseError>(())
+            });
+        }
+
+        /// Modifying any entry in the trail breaks the chain.
+        #[test]
+        fn prop_tampered_entry_broken_chain(events in prop::collection::vec(arb_event(), 2..20)) {
+            let _ = with_lock(|| {
+                clear();
+                for (cat, msg) in &events {
+                    push(cat, msg);
+                }
+                let mut s = snapshot();
+                prop_assert_eq!(s.len(), events.len());
+                // Tamper with the middle entry's message
+                let idx = s.len() / 2;
+                s[idx].msg = "TAMPERED".to_string();
+                prop_assert!(verify_chain(&s).is_err(),
+                    "tampered entry {} must break chain", idx);
+                Ok::<_, proptest::test_runner::TestCaseError>(())
+            });
+        }
+
+        /// Removing any entry breaks the chain.
+        #[test]
+        fn prop_removed_entry_broken_chain(events in prop::collection::vec(arb_event(), 3..15)) {
+            let _ = with_lock(|| {
+                clear();
+                for (cat, msg) in &events {
+                    push(cat, msg);
+                }
+                let mut s = snapshot();
+                prop_assert_eq!(s.len(), events.len());
+                // Remove the middle entry
+                let idx = s.len() / 2;
+                s.remove(idx);
+                prop_assert!(verify_chain(&s).is_err(),
+                    "removing entry {} must break chain", idx);
+                Ok::<_, proptest::test_runner::TestCaseError>(())
+            });
+        }
+
+        /// Reordering any two entries breaks the chain.
+        #[test]
+        fn prop_reordered_entries_broken_chain(events in prop::collection::vec(arb_event(), 3..15)) {
+            let _ = with_lock(|| {
+                clear();
+                for (cat, msg) in &events {
+                    push(cat, msg);
+                }
+                let mut s = snapshot();
+                prop_assert_eq!(s.len(), events.len());
+                // Swap the first two entries
+                s.swap(0, 1);
+                prop_assert!(verify_chain(&s).is_err(),
+                    "reordering entries must break chain");
+                Ok::<_, proptest::test_runner::TestCaseError>(())
+            });
+        }
+
+        /// Genesis entry always has prev_hash = "0", subsequent entries
+        /// always have prev_hash = sha256(previous entry).
+        #[test]
+        fn prop_entry_linking_correct(events in prop::collection::vec(arb_event(), 1..30)) {
+            let _ = with_lock(|| {
+                clear();
+                for (cat, msg) in &events {
+                    push(cat, msg);
+                }
+                let s = snapshot();
+                prop_assert_eq!(s.len(), events.len());
+                prop_assert_eq!(&s[0].prev_hash, "0",
+                    "genesis entry must have prev_hash='0'");
+                for i in 1..s.len() {
+                    let expected = compute_hash(&s[i - 1]);
+                    prop_assert_eq!(&s[i].prev_hash, &expected,
+                        "entry {} prev_hash mismatch", i);
+                }
+                Ok::<_, proptest::test_runner::TestCaseError>(())
+            });
+        }
+
+    }
+
+    /// Empty trail verifies OK and snapshot is empty.
+    #[test]
+    fn test_empty_trail_is_valid() {
+        with_lock(|| {
+            clear();
+            let s = snapshot();
+            assert!(verify_chain(&s).is_ok(), "empty trail must be valid");
+            assert!(s.is_empty(), "empty trail snapshot must be empty");
+        });
+    }
+
+    // Deterministic proptest-free versions of edge-case tests
+    // (proptest! macro requires at least one random parameter per test).
+
+    #[test]
+    fn prop_flush_empty_returns_empty() {
+        with_lock(|| {
+            clear();
+            let json = flush();
+            assert_eq!(json, "", "flush of empty trail must return empty string");
+        });
+    }
+
+    #[test]
+    fn prop_restore_empty_noop() {
+        with_lock(|| {
+            clear();
+            restore("");
+            let s = snapshot();
+            assert!(
+                s.is_empty(),
+                "restore of empty string must leave trail empty"
+            );
         });
     }
 }

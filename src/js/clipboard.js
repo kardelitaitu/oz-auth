@@ -1,5 +1,20 @@
 //! Clipboard copy with configurable auto-clear timer.
 
+/** Generate random data to overwrite clipboard contents, preventing recovery from clipboard history. */
+function randomClearString() {
+  try {
+    return crypto.randomUUID() + crypto.randomUUID();
+  } catch (_) {
+    // Fallback if crypto.randomUUID is unavailable
+    return Math.random().toString(36).repeat(8);
+  }
+}
+
+/** Overwrite clipboard with random noise instead of an empty string. */
+async function clearClipboard() {
+  await navigator.clipboard.writeText(randomClearString());
+}
+
 /**
  * Create a clipboard manager that auto-clears copied codes after `clearSeconds`.
  * Returns { copy, clear, setClearSeconds, clearOnLock }.
@@ -14,14 +29,18 @@ export function createClipboardManager(toastFn, clearSeconds = 30) {
     const code = el.textContent.replace(/\s/g, "");
     try {
       await navigator.clipboard.writeText(code);
-      toastFn("Code copied — auto-clears in " + timeout + "s");
-      if (clipboardTimer) clearTimeout(clipboardTimer);
-      clipboardTimer = setTimeout(async () => {
-        try {
-          await navigator.clipboard.writeText("");
-          toastFn("Clipboard cleared");
-        } catch (_) {}
-      }, timeout * 1000);
+      if (timeout > 0) {
+        toastFn("Code copied — auto-clears in " + timeout + "s");
+        if (clipboardTimer) clearTimeout(clipboardTimer);
+        clipboardTimer = setTimeout(async () => {
+          try {
+            await clearClipboard();
+            toastFn("Clipboard cleared");
+          } catch (_) {}
+        }, timeout * 1000);
+      } else {
+        toastFn("Code copied");
+      }
     } catch (e) {
       toastFn("Copy failed", true);
     }
@@ -45,7 +64,7 @@ export function createClipboardManager(toastFn, clearSeconds = 30) {
   async function clearOnLock() {
     clearTimer();
     try {
-      await navigator.clipboard.writeText("");
+      await clearClipboard();
       toastFn("Clipboard cleared");
     } catch (_) {}
   }

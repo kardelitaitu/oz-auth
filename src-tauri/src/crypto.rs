@@ -463,4 +463,68 @@ mod tests {
             assert_eq!(pt, plaintext, "large plaintext roundtrip content mismatch");
         }
     }
+
+    // ── Additional coverage tests ─────────────────────────────
+
+    #[test]
+    fn test_derive_key_empty_salt_fails() {
+        let result = derive_key("password", &[]);
+        assert!(result.is_err(), "empty salt must fail: {result:?}");
+    }
+
+    #[test]
+    fn test_derive_key_1_byte_salt() {
+        let result = derive_key("password", &[42u8]);
+        // Argon2 may accept very short salts — just verify it doesn't panic
+        // If it fails, that's acceptable behavior; if it succeeds, that's also OK
+        let _ = result;
+    }
+
+    #[test]
+    fn test_derive_key_7_byte_salt() {
+        let result = derive_key("password", &[1u8; 7]);
+        let _ = result;
+    }
+
+    #[test]
+    fn test_derive_key_exactly_8_byte_salt() {
+        let result = derive_key("password", &[0xABu8; 8]);
+        assert!(result.is_ok(), "8-byte salt must succeed: {result:?}");
+    }
+
+    #[test]
+    fn test_derive_key_64_byte_salt() {
+        let result = derive_key("password", &[0xCDu8; 64]);
+        assert!(result.is_ok(), "64-byte salt must succeed: {result:?}");
+    }
+
+    #[test]
+    fn test_decrypt_truncated_ciphertext_fails() {
+        let key = [0x42u8; 32];
+        // Ciphertext too short to contain GCM tag (16 bytes minimum)
+        let short_ct = vec![0u8; 5];
+        let nonce = [0u8; 12];
+        let result = decrypt(&short_ct, &nonce, &key);
+        assert!(
+            result.is_err(),
+            "truncated ciphertext must fail: {result:?}"
+        );
+    }
+
+    #[test]
+    fn test_decrypt_zero_length_nonce_fails() {
+        let key = [0x42u8; 32];
+        let plaintext = "hello";
+        let (nonce, ct) = encrypt(plaintext, &key).unwrap();
+        let result = decrypt(&ct, &nonce[1..], &key);
+        assert!(result.is_err(), "short nonce must fail: {result:?}");
+    }
+
+    #[test]
+    fn test_decrypt_zero_length_ciphertext_fails() {
+        let key = [0x42u8; 32];
+        let nonce = [0u8; 12];
+        let result = decrypt(&[], &nonce, &key);
+        assert!(result.is_err(), "empty ciphertext must fail: {result:?}");
+    }
 }

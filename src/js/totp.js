@@ -1,6 +1,8 @@
 //! TOTP display logic: countdown timer, code formatting, progress bars.
 //! Pure utility functions — state is managed by the caller (main.js).
 
+let _intervalId = null;
+
 /**
  * Format a TOTP code with spacing: "123456" → "123 456", "12345678" → "1234 5678"
  */
@@ -73,8 +75,6 @@ export function updateBars(accounts, secondsRemaining) {
  * `onError(msg, isError)` forwarded to refreshCodes for toast visibility.
  */
 export function startCountdown(invoke, getAccounts, getLocked, getSecondsRemaining, updateTrayIcon, onError) {
-  const stopFn = stopCountdown;
-
   refreshCodes(invoke, getLocked(), getSecondsRemaining(), () =>
     updateBars(getAccounts(), getSecondsRemaining())
   , onError);
@@ -108,13 +108,12 @@ export function startCountdown(invoke, getAccounts, getLocked, getSecondsRemaini
     }
   }, 1000);
 
-  stopFn._interval = interval;
-  return stopFn;
+  _intervalId = interval;
 }
 
 export function stopCountdown() {
-  if (stopCountdown._interval) {
-    clearInterval(stopCountdown._interval);
-    stopCountdown._interval = null;
+  if (_intervalId) {
+    clearInterval(_intervalId);
+    _intervalId = null;
   }
 }
