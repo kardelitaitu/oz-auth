@@ -1911,17 +1911,21 @@ mod tests {
                     .into();
             crate::storage::save(&data).unwrap();
 
-            // Import from the same path as the auth file (self-copy)
-            let auth_path = crate::paths::auth_path().to_string_lossy().to_string();
-            // This should either succeed (no-op copy) or fail gracefully — must not panic
-            let result = import_backup_impl(&auth_path, &_state);
+            // Copy auth file to a temp path, then import from there (avoids self-copy truncation on Linux)
+            let auth_path = crate::paths::auth_path();
+            let temp_path = auth_path.with_extension("auth.bak");
+            std::fs::copy(&auth_path, &temp_path).unwrap();
+
+            let result = import_backup_impl(&temp_path.to_string_lossy(), &_state);
+            let _ = std::fs::remove_file(&temp_path);
+
             // Self-copy is valid on Windows (copy file over itself) — may succeed or fail depending on OS
             // The important thing is it doesn't corrupt the data
             if result.is_ok() {
                 let reloaded = crate::storage::try_load().unwrap();
                 let accounts: Vec<crate::models::account::Account> =
                     serde_json::from_str(&reloaded.accounts.data_json).unwrap();
-                assert_eq!(accounts.len(), 1, "self-copy must not lose data");
+                assert_eq!(accounts.len(), 1, "import must not lose data");
             }
             cleanup_auth_file();
         });
