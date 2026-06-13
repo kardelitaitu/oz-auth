@@ -148,10 +148,7 @@ fn atomic_write(target: &std::path::Path, contents: &str) -> Result<(), String> 
     // Atomic rename — on Windows this is atomic if src and dest are on the same volume
     std::fs::rename(&tmp, target).map_err(|e| {
         let _ = std::fs::remove_file(&tmp);
-        format!(
-            "failed to rename temp file to {}: {e}",
-            target.display()
-        )
+        format!("failed to rename temp file to {}: {e}", target.display())
     })?;
 
     Ok(())
