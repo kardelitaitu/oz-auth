@@ -34,7 +34,7 @@ fn make_totp(account: &Account) -> Result<totp_rs::TOTP, String> {
         account.digits as usize,
         1,
         account.period as u64,
-        account.secret.clone(),
+        account.secret.to_vec(),
         Some(account.issuer.clone()),
         account.label.clone(),
     ))
@@ -49,6 +49,7 @@ fn current_timestamp() -> u64 {
 
 /// Core logic for generate_code — takes &AppState so it's testable without Tauri.
 fn generate_code_impl(account_id: &str, state: &AppState) -> Result<(String, u32), String> {
+    crate::commands::validate_length(account_id, 1, crate::commands::MAX_ID_LEN, "account ID")?;
     let data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
@@ -137,7 +138,7 @@ mod tests {
             algorithm: algo,
             digits,
             period: 30,
-            secret: secret.to_vec(),
+            secret: zeroize::Zeroizing::new(secret.to_vec()),
             sort_order: 0,
             created_at: Utc::now(),
             updated_at: Utc::now(),
@@ -156,7 +157,7 @@ mod tests {
         let salt = crypto::generate_salt();
         data.accounts = crate::storage::encrypt_accounts(accounts, &key).unwrap();
         data.config.password_protected = true;
-        data.config.password_salt = hex::encode(salt);
+        data.config.password_salt = zeroize::Zeroizing::new(hex::encode(salt));
         crate::storage::save(&data).unwrap();
         key
     }
@@ -602,7 +603,7 @@ mod tests {
             let state = test_app_state();
             // Account with an empty secret — now caught by validate_secret_length in make_totp
             let mut account = test_account(b"12345678901234567890", Algorithm::SHA1, 6);
-            account.secret = vec![];
+            account.secret = zeroize::Zeroizing::new(vec![]);
             seed_plaintext_accounts(&[account]);
 
             let result = generate_code_impl("test-1", &state);
@@ -623,7 +624,7 @@ mod tests {
             let state = test_app_state();
             // 10-byte secret (80 bits) — now accepted via new_unchecked
             let mut account = test_account(b"1234567890", Algorithm::SHA1, 6);
-            account.secret = b"JBSWY3DPEB".to_vec(); // 10 bytes
+            account.secret = zeroize::Zeroizing::new(b"JBSWY3DPEB".to_vec()); // 10 bytes
             seed_plaintext_accounts(&[account]);
 
             let (code, remaining) = generate_code_impl("test-1", &state).unwrap();
@@ -642,7 +643,7 @@ mod tests {
             // totp_rs requires the secret to be at least 128 bits (16 bytes).
             // A 16-byte all-zero key is weak but technically valid for HMAC.
             let mut account = test_account(b"12345678901234567890", Algorithm::SHA1, 6);
-            account.secret = vec![0x00u8; 16];
+            account.secret = zeroize::Zeroizing::new(vec![0x00u8; 16]);
             seed_plaintext_accounts(&[account]);
 
             let (code, remaining) = generate_code_impl("test-1", &state).unwrap();
@@ -663,7 +664,7 @@ mod tests {
             a1.id = "good".into();
             let mut a2 = test_account(b"12345678901234567890", Algorithm::SHA1, 6);
             a2.id = "bad".into();
-            a2.secret = vec![];
+            a2.secret = zeroize::Zeroizing::new(vec![]);
             seed_plaintext_accounts(&[a1, a2]);
 
             let result = generate_all_codes_impl(&state);
@@ -902,13 +903,13 @@ mod tests {
             let secret = b"12345678901234567890";
             seed_plaintext_accounts(&[test_account(secret, Algorithm::SHA1, 6)]);
 
-            // Empty string should not match any account
+            // Empty string should fail validation before lookup
             let result = generate_code_impl("", &state);
             assert!(result.is_err(), "empty account ID must fail");
             let err = result.unwrap_err();
             assert!(
-                err.contains("not found"),
-                "error should mention 'not found': {err}"
+                err.contains("too short"),
+                "error should mention 'too short': {err}"
             );
             cleanup_auth_file();
         });

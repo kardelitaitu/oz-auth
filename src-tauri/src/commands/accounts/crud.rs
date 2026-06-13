@@ -19,6 +19,9 @@ fn add_account_impl(
     period: Option<u32>,
     state: &AppState,
 ) -> Result<Account, String> {
+    crate::commands::validate_length(issuer, 1, crate::commands::MAX_ISSUER_LEN, "issuer")?;
+    crate::commands::validate_length(label, 1, crate::commands::MAX_LABEL_LEN, "label")?;
+    crate::commands::validate_length(secret, 1, crate::commands::MAX_SECRET_STR_LEN, "secret")?;
     let mut data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
@@ -39,7 +42,7 @@ fn add_account_impl(
         algorithm: algo,
         digits: digits.unwrap_or(6),
         period: period.unwrap_or(30),
-        secret: decode_secret(secret)?,
+        secret: Zeroizing::new(decode_secret(secret)?),
         sort_order: accounts.len() as u32,
         created_at: now,
         updated_at: now,
@@ -83,6 +86,7 @@ pub fn add_account(
 // ── add_account_from_uri ─────────────────────────────────────
 
 fn add_account_from_uri_impl(otpauth_uri: &str, state: &AppState) -> Result<Account, String> {
+    crate::commands::validate_length(otpauth_uri, 1, crate::commands::MAX_URI_LEN, "otpauth URI")?;
     let parsed = crate::utils::otpauth::parse_uri(otpauth_uri)?;
 
     // Validate secret length early — before any disk I/O
@@ -102,7 +106,7 @@ fn add_account_from_uri_impl(otpauth_uri: &str, state: &AppState) -> Result<Acco
         algorithm: parsed.algorithm,
         digits: parsed.digits,
         period: parsed.period,
-        secret: parsed.secret,
+        secret: Zeroizing::new(parsed.secret),
         sort_order: accounts.len() as u32,
         created_at: now,
         updated_at: now,
@@ -132,6 +136,7 @@ pub fn add_account_from_uri(
 // ── remove_account ───────────────────────────────────────────
 
 fn remove_account_impl(account_id: &str, state: &AppState) -> Result<(), String> {
+    crate::commands::validate_length(account_id, 1, crate::commands::MAX_ID_LEN, "account ID")?;
     let mut data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
@@ -168,6 +173,13 @@ fn update_account_impl(
     sort_order: Option<u32>,
     state: &AppState,
 ) -> Result<Account, String> {
+    crate::commands::validate_length(account_id, 1, crate::commands::MAX_ID_LEN, "account ID")?;
+    if let Some(v) = issuer {
+        crate::commands::validate_length(v, 1, crate::commands::MAX_ISSUER_LEN, "issuer")?;
+    }
+    if let Some(v) = label {
+        crate::commands::validate_length(v, 1, crate::commands::MAX_LABEL_LEN, "label")?;
+    }
     let mut data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
@@ -225,6 +237,9 @@ fn list_accounts_impl(
     search_query: Option<&str>,
     state: &AppState,
 ) -> Result<Vec<AccountSummary>, String> {
+    if let Some(q) = search_query {
+        crate::commands::validate_length(q, 0, crate::commands::MAX_QUERY_LEN, "search query")?;
+    }
     let data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
@@ -368,7 +383,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1],
+                    secret: Zeroizing::new(vec![1]),
                     sort_order: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -380,7 +395,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![2],
+                    secret: Zeroizing::new(vec![2]),
                     sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -415,7 +430,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1, 2, 3],
+                secret: Zeroizing::new(vec![1, 2, 3]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -456,7 +471,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1],
+                secret: Zeroizing::new(vec![1]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -492,7 +507,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1],
+                secret: Zeroizing::new(vec![1]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -518,7 +533,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1],
+                secret: Zeroizing::new(vec![1]),
                 sort_order: 7,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -548,7 +563,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1],
+                secret: Zeroizing::new(vec![1]),
                 sort_order: 3,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -578,7 +593,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1],
+                secret: Zeroizing::new(vec![1]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -610,7 +625,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1],
+                    secret: Zeroizing::new(vec![1]),
                     sort_order: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -622,7 +637,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![2],
+                    secret: Zeroizing::new(vec![2]),
                     sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -652,7 +667,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1],
+                    secret: Zeroizing::new(vec![1]),
                     sort_order: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -664,7 +679,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![2],
+                    secret: Zeroizing::new(vec![2]),
                     sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -692,7 +707,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1],
+                secret: Zeroizing::new(vec![1]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -720,7 +735,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1],
+                    secret: Zeroizing::new(vec![1]),
                     sort_order: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -732,7 +747,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![2],
+                    secret: Zeroizing::new(vec![2]),
                     sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -763,7 +778,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1, 2, 3],
+                secret: Zeroizing::new(vec![1, 2, 3]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -780,7 +795,7 @@ mod tests {
                 algorithm: Algorithm::SHA256,
                 digits: 8,
                 period: 60,
-                secret: vec![4, 5, 6],
+                secret: Zeroizing::new(vec![4, 5, 6]),
                 sort_order: 1,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -814,7 +829,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1],
+                secret: Zeroizing::new(vec![1]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -853,7 +868,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1, 2, 3],
+                secret: Zeroizing::new(vec![1, 2, 3]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -899,20 +914,20 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1],
-                    sort_order: 0,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                },
-                Account {
-                    id: "s2".into(),
-                    issuer: "Google".into(),
-                    label: "user@gmail.com".into(),
-                    algorithm: Algorithm::SHA1,
-                    digits: 6,
-                    period: 30,
-                    secret: vec![2],
-                    sort_order: 1,
+                secret: Zeroizing::new(vec![1]),
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            },
+            Account {
+                id: "s2".into(),
+                issuer: "Google".into(),
+                label: "user@gmail.com".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: Zeroizing::new(vec![2]),
+                sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 },
@@ -965,7 +980,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1],
+                    secret: Zeroizing::new(vec![1]),
                     sort_order: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -977,7 +992,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![2],
+                    secret: Zeroizing::new(vec![2]),
                     sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -1019,20 +1034,20 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1, 2],
-                    sort_order: 0,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                },
-                Account {
-                    id: "uuid-bbb".into(),
-                    issuer: "Dupe".into(),
-                    label: "same@test.com".into(),
-                    algorithm: Algorithm::SHA256,
-                    digits: 6,
-                    period: 30,
-                    secret: vec![3, 4],
-                    sort_order: 1,
+                secret: Zeroizing::new(vec![1, 2]),
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            },
+            Account {
+                id: "uuid-bbb".into(),
+                issuer: "Dupe".into(),
+                label: "same@test.com".into(),
+                algorithm: Algorithm::SHA256,
+                digits: 6,
+                period: 30,
+                secret: Zeroizing::new(vec![3, 4]),
+                sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 },
@@ -1069,7 +1084,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1],
+                    secret: Zeroizing::new(vec![1]),
                     sort_order: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -1081,7 +1096,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![2],
+                    secret: Zeroizing::new(vec![2]),
                     sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -1117,7 +1132,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1, 2, 3],
+                secret: Zeroizing::new(vec![1, 2, 3]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -1152,7 +1167,7 @@ mod tests {
                 algorithm: parsed.algorithm.clone(),
                 digits: parsed.digits,
                 period: parsed.period,
-                secret: parsed.secret.clone(),
+                secret: Zeroizing::new(parsed.secret.clone()),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -1182,12 +1197,11 @@ mod tests {
 
     fn seed_encrypted_state(state: &crate::AppState) -> zeroize::Zeroizing<[u8; 32]> {
         let salt = crate::crypto::generate_salt();
-        let raw_key = crate::crypto::derive_key("testpin", &*salt).unwrap();
-        let key = zeroize::Zeroizing::new(raw_key);
+        let key = crate::crypto::derive_key("testpin", &*salt).unwrap();
         let mut data = crate::storage::try_load().unwrap();
         data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
         data.config.password_protected = true;
-        data.config.password_salt = hex::encode(*salt);
+        data.config.password_salt = Zeroizing::new(hex::encode(*salt));
         crate::storage::save(&data).unwrap();
         state.set_key(*key).unwrap();
         key
@@ -1381,20 +1395,20 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1],
-                    sort_order: 0,
-                    created_at: chrono::Utc::now(),
-                    updated_at: chrono::Utc::now(),
-                },
-                Account {
-                    id: "s2".into(),
-                    issuer: "AT&T".into(),
-                    label: "admin@at&t.com".into(),
-                    algorithm: Algorithm::SHA1,
-                    digits: 6,
-                    period: 30,
-                    secret: vec![2],
-                    sort_order: 1,
+                secret: Zeroizing::new(vec![1]),
+                sort_order: 0,
+                created_at: chrono::Utc::now(),
+                updated_at: chrono::Utc::now(),
+            },
+            Account {
+                id: "s2".into(),
+                issuer: "AT&T".into(),
+                label: "admin@at&t.com".into(),
+                algorithm: Algorithm::SHA1,
+                digits: 6,
+                period: 30,
+                secret: Zeroizing::new(vec![2]),
+                sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 },
@@ -1425,7 +1439,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1],
+                secret: Zeroizing::new(vec![1]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -1453,7 +1467,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1],
+                    secret: Zeroizing::new(vec![1]),
                     sort_order: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -1465,7 +1479,7 @@ mod tests {
                     algorithm: Algorithm::SHA256,
                     digits: 8,
                     period: 60,
-                    secret: vec![2],
+                    secret: Zeroizing::new(vec![2]),
                     sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -1499,8 +1513,8 @@ mod tests {
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
 
-            let long_issuer = "X".repeat(500);
-            let long_label = "y".repeat(500);
+            let long_issuer = "X".repeat(100);
+            let long_label = "y".repeat(200);
             let account = add_account_impl(
                 &long_issuer,
                 &long_label,
@@ -1511,12 +1525,12 @@ mod tests {
                 &state,
             )
             .unwrap();
-            assert_eq!(account.issuer.len(), 500);
-            assert_eq!(account.label.len(), 500);
+            assert_eq!(account.issuer.len(), 100);
+            assert_eq!(account.label.len(), 200);
 
             let results = list_accounts_impl(None, &state).unwrap();
             assert_eq!(results.len(), 1);
-            assert_eq!(results[0].issuer.len(), 500);
+            assert_eq!(results[0].issuer.len(), 100);
             cleanup_auth_file();
         });
     }
@@ -1619,7 +1633,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![i as u8],
+                    secret: Zeroizing::new(vec![i as u8]),
                     sort_order: i,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),

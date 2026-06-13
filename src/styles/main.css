@@ -1003,6 +1003,48 @@ body.theme-dark, body:not(.theme-light) {
   width: 100%;
 }
 
+/* ── PIN strength meter ─────────────────────────────── */
+.pin-strength-meter {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+
+.pin-strength-meter.hidden {
+  display: none;
+}
+
+.pin-strength-bar {
+  flex: 1;
+  height: 4px;
+  background: var(--card-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.pin-strength-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 2px;
+  transition: width 0.2s ease, background 0.3s ease;
+}
+
+.pin-strength-fill.level-none  { width: 0% !important; }
+.pin-strength-fill.level-weak  { background: #e74c3c; }
+.pin-strength-fill.level-medium { background: #f39c12; }
+.pin-strength-fill.level-strong { background: #27ae60; }
+.pin-strength-fill.level-very-strong { background: #2ecc71; }
+
+.pin-strength-label {
+  font-size: 10px;
+  color: var(--btn-color);
+  opacity: 0.7;
+  white-space: nowrap;
+  min-width: 70px;
+  text-align: right;
+}
+
 .settings-pin-btn {
   width: auto !important;
   padding: 8px 16px !important;

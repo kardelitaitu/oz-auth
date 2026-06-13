@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Config {
@@ -9,7 +10,7 @@ pub struct Config {
     pub always_on_top: bool,
     pub theme: String,
     pub password_protected: bool,
-    pub password_salt: String,
+    pub password_salt: Zeroizing<String>,
     pub lock_timeout_seconds: u32,
     pub clipboard_clear_seconds: u32,
     pub lock_on_focus_loss: bool,
@@ -64,7 +65,7 @@ impl<'de> Deserialize<'de> for Config {
             always_on_top: de.always_on_top,
             theme: de.theme,
             password_protected: de.password_protected,
-            password_salt: de.password_salt,
+            password_salt: Zeroizing::new(de.password_salt),
             lock_timeout_seconds,
             clipboard_clear_seconds: de.clipboard_clear_seconds,
             lock_on_focus_loss: de.lock_on_focus_loss,
@@ -110,7 +111,7 @@ impl Default for Config {
             always_on_top: false,
             theme: default_theme(),
             password_protected: false,
-            password_salt: String::new(),
+            password_salt: Zeroizing::new(String::new()),
             lock_timeout_seconds: default_lock_timeout(),
             clipboard_clear_seconds: default_clipboard_clear_seconds(),
             lock_on_focus_loss: false,
@@ -145,7 +146,7 @@ mod tests {
             always_on_top: true,
             theme: "light".to_string(),
             password_protected: true,
-            password_salt: "aabbccdd".to_string(),
+            password_salt: Zeroizing::new("aabbccdd".to_string()),
             lock_timeout_seconds: 600,
             clipboard_clear_seconds: 15,
             lock_on_focus_loss: true,
@@ -157,7 +158,7 @@ mod tests {
         assert!(restored.password_protected);
         assert_eq!(restored.lock_timeout_seconds, 600);
         assert_eq!(restored.clipboard_clear_seconds, 15);
-        assert_eq!(restored.password_salt, "aabbccdd");
+        assert_eq!(*restored.password_salt, "aabbccdd");
     }
 
     #[test]
@@ -418,7 +419,7 @@ mod tests {
             always_on_top: true,
             theme: "light".to_string(),
             password_protected: true,
-            password_salt: "aabbccdd".to_string(),
+            password_salt: Zeroizing::new("aabbccdd".to_string()),
             lock_timeout_seconds: 600,
             clipboard_clear_seconds: 60,
             lock_on_focus_loss: true,
@@ -432,7 +433,7 @@ mod tests {
         assert!(restored.always_on_top);
         assert_eq!(restored.theme, "light");
         assert!(restored.password_protected);
-        assert_eq!(restored.password_salt, "aabbccdd");
+        assert_eq!(*restored.password_salt, "aabbccdd");
         assert_eq!(restored.lock_timeout_seconds, 600);
         assert_eq!(restored.clipboard_clear_seconds, 60);
         assert!(restored.lock_on_focus_loss);

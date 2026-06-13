@@ -4,10 +4,7 @@ use tauri::State;
 use zeroize::{Zeroize, Zeroizing};
 
 fn set_lock_impl(pin: &str, state: &AppState) -> Result<(), String> {
-    if pin.is_empty() {
-        return Err("PIN cannot be empty".to_string());
-    }
-
+    crate::commands::validate_length(pin, crate::commands::MIN_PIN_LEN, crate::commands::MAX_PIN_LEN, "PIN")?;
     let mut data = state.load_data()?;
     if data.config.password_protected {
         return Err("PIN is already set".to_string());
@@ -25,10 +22,10 @@ fn set_lock_impl(pin: &str, state: &AppState) -> Result<(), String> {
     // Re-encrypt
     data.accounts = encrypt_accounts(&accounts, &key)?;
     data.config.password_protected = true;
-    data.config.password_salt = salt_hex;
+    data.config.password_salt = Zeroizing::new(salt_hex);
     crate::storage::flush_and_save(&mut data)?;
     state.invalidate_cache();
-    state.set_key(key)?;
+    state.set_key(*key)?;
     // Zeroize derived key and account secrets
     key.zeroize();
     for a in &mut accounts {
@@ -48,6 +45,7 @@ pub fn set_lock(pin: String, state: State<'_, AppState>) -> Result<(), String> {
 }
 
 fn unlock_impl(pin: &str, state: &AppState) -> Result<bool, String> {
+    crate::commands::validate_length(pin, crate::commands::MIN_PIN_LEN, crate::commands::MAX_PIN_LEN, "PIN")?;
     let data = state.load_data()?;
     if !data.config.password_protected {
         return Err("PIN is not set".to_string());
@@ -73,7 +71,7 @@ fn unlock_impl(pin: &str, state: &AppState) -> Result<bool, String> {
             }
             accounts.clear();
             accounts.shrink_to_fit();
-            state.set_key(key)?;
+            state.set_key(*key)?;
             state.reset_rate_limit();
             key.zeroize();
             salt.zeroize();
@@ -123,10 +121,8 @@ pub fn is_locked(state: State<'_, AppState>) -> Result<bool, String> {
 }
 
 fn change_pin_impl(old_pin: &str, new_pin: &str, state: &AppState) -> Result<(), String> {
-    if new_pin.is_empty() {
-        return Err("new PIN cannot be empty".to_string());
-    }
-
+    crate::commands::validate_length(old_pin, crate::commands::MIN_PIN_LEN, crate::commands::MAX_PIN_LEN, "old PIN")?;
+    crate::commands::validate_length(new_pin, crate::commands::MIN_PIN_LEN, crate::commands::MAX_PIN_LEN, "new PIN")?;
     let mut data = state.load_data()?;
     if !data.config.password_protected {
         return Err("PIN is not set".to_string());
@@ -151,12 +147,12 @@ fn change_pin_impl(old_pin: &str, new_pin: &str, state: &AppState) -> Result<(),
     let new_salt_hex = hex::encode(*new_salt);
     let mut new_key = crate::crypto::derive_key(new_pin, &*new_salt)?;
     data.accounts = encrypt_accounts(&accounts, &new_key)?;
-    data.config.password_salt = new_salt_hex;
+    data.config.password_salt = Zeroizing::new(new_salt_hex);
     crate::storage::flush_and_save(&mut data)?;
     state.invalidate_cache();
 
     // Store the new key BEFORE zeroizing — set_key takes ownership
-    state.set_key(new_key)?;
+    state.set_key(*new_key)?;
 
     // Zeroize the old key, new key, and account secrets after use
     old_key.zeroize();
@@ -183,7 +179,8 @@ pub fn change_pin(
 
 #[tauri::command]
 pub fn export_backup(path: String) -> Result<(), String> {
-    let src = crate::paths::auth_path();
+    crate::commands::validate_length(&path, 1, crate::commands::MAX_PATH_LEN, "backup path")?;
+    let src = crate::paths::auth_path()?;
     std::fs::copy(&src, &path).map_err(|e| format!("failed to export backup: {e}"))?;
     crate::diagnostics::event("backup", &format!("exported to {path}"));
     Ok(())
@@ -192,6 +189,7 @@ pub fn export_backup(path: String) -> Result<(), String> {
 /// Verify a PIN without setting the encryption key (read-only check).
 /// Used by the backup flow to validate the PIN before exporting.
 fn verify_pin_impl(pin: &str, state: &AppState) -> Result<bool, String> {
+    crate::commands::validate_length(pin, crate::commands::MIN_PIN_LEN, crate::commands::MAX_PIN_LEN, "PIN")?;
     let data = state.load_data()?;
     if !data.config.password_protected {
         return Err("PIN is not set".to_string());
@@ -214,6 +212,7 @@ pub fn verify_pin(pin: String, state: State<'_, AppState>) -> Result<bool, Strin
 }
 
 fn import_backup_impl(path: &str, state: &AppState) -> Result<(), String> {
+    crate::commands::validate_length(path, 1, crate::commands::MAX_PATH_LEN, "backup path")?;
     let raw = std::fs::read_to_string(path).map_err(|e| format!("failed to read backup: {e}"))?;
     let _backup: crate::storage::auth_file::AuthData =
         serde_json::from_str(&raw).map_err(|e| format!("invalid backup file: {e}"))?;
@@ -227,7 +226,7 @@ fn import_backup_impl(path: &str, state: &AppState) -> Result<(), String> {
         return Err("app is locked".to_string());
     }
 
-    let dest = crate::paths::auth_path();
+    let dest = crate::paths::auth_path()?;
     std::fs::copy(path, &dest).map_err(|e| format!("failed to import backup: {e}"))?;
     state.invalidate_cache();
     state.clear_key()?;
@@ -285,7 +284,7 @@ mod tests {
                 algorithm: crate::models::account::Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1, 2, 3],
+                secret: Zeroizing::new(vec![1, 2, 3]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -298,9 +297,9 @@ mod tests {
             let mut key = crypto::derive_key("1234", &*salt).unwrap();
             data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
-            state.set_key(key).unwrap();
+            state.set_key(*key).unwrap();
             key.zeroize();
 
             let loaded = crate::storage::try_load().unwrap();
@@ -323,7 +322,7 @@ mod tests {
             let accounts: Vec<crate::models::account::Account> = vec![];
             data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
 
             let loaded = crate::storage::try_load().unwrap();
@@ -346,7 +345,7 @@ mod tests {
             let accounts: Vec<crate::models::account::Account> = vec![];
             data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
 
             let loaded = crate::storage::try_load().unwrap();
@@ -374,14 +373,14 @@ mod tests {
             let accounts: Vec<crate::models::account::Account> = vec![];
             data.accounts = crate::storage::encrypt_accounts(&accounts, &old_key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
 
             let mut decrypted = crate::storage::decrypt_accounts(&data.accounts, &old_key).unwrap();
             let new_salt = crypto::generate_salt();
             let mut new_key = crypto::derive_key("newpin", &*new_salt).unwrap();
             data.accounts = crate::storage::encrypt_accounts(&decrypted, &new_key).unwrap();
-            data.config.password_salt = hex::encode(*new_salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*new_salt));
             crate::storage::save(&data).unwrap();
 
             let loaded = crate::storage::try_load().unwrap();
@@ -409,13 +408,13 @@ mod tests {
             cleanup_auth_file();
             let data = crate::storage::try_load().unwrap();
             crate::storage::save(&data).unwrap();
-            assert!(crate::paths::auth_path().exists());
+            assert!(crate::paths::auth_path().unwrap().exists());
 
-            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            let backup_path = crate::paths::auth_path().unwrap().with_extension("auth.backup");
             export_backup(backup_path.to_string_lossy().to_string()).unwrap();
             assert!(backup_path.exists());
 
-            let original = std::fs::read_to_string(crate::paths::auth_path()).unwrap();
+            let original = std::fs::read_to_string(crate::paths::auth_path().unwrap()).unwrap();
             let backup = std::fs::read_to_string(&backup_path).unwrap();
             assert_eq!(original, backup);
 
@@ -436,7 +435,7 @@ mod tests {
             crate::storage::save(&data).unwrap();
 
             // Export to backup
-            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            let backup_path = crate::paths::auth_path().unwrap().with_extension("auth.backup");
             export_backup(backup_path.to_string_lossy().to_string()).unwrap();
 
             // Modify original
@@ -447,7 +446,7 @@ mod tests {
             // Import the backup (restores dark theme)
             let raw = std::fs::read_to_string(&backup_path).unwrap();
             let _backup: crate::storage::auth_file::AuthData = serde_json::from_str(&raw).unwrap();
-            let dest = crate::paths::auth_path();
+            let dest = crate::paths::auth_path().unwrap();
             std::fs::copy(&backup_path, &dest).unwrap();
 
             // Verify restore
@@ -466,7 +465,7 @@ mod tests {
     fn test_import_backup_invalid_json_rejected() {
         with_fs_lock(|| {
             cleanup_auth_file();
-            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            let backup_path = crate::paths::auth_path().unwrap().with_extension("auth.backup");
             std::fs::write(&backup_path, "not valid json at all").unwrap();
 
             let raw = std::fs::read_to_string(&backup_path).unwrap();
@@ -497,8 +496,8 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1, 2, 3, 4, 5],
-                    sort_order: 0,
+                secret: Zeroizing::new(vec![1, 2, 3, 4, 5]),
+                sort_order: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 },
@@ -509,8 +508,8 @@ mod tests {
                     algorithm: Algorithm::SHA256,
                     digits: 6,
                     period: 30,
-                    secret: vec![6, 7, 8],
-                    sort_order: 1,
+                secret: Zeroizing::new(vec![6, 7, 8]),
+                sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 },
@@ -542,9 +541,9 @@ mod tests {
             data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = original_salt_hex.clone();
+            data.config.password_salt = Zeroizing::new(original_salt_hex.clone());
             crate::storage::save(&data).unwrap();
-            state.set_key(key).unwrap();
+            state.set_key(*key).unwrap();
             key.zeroize();
 
             let loaded = crate::storage::try_load().unwrap();
@@ -554,7 +553,7 @@ mod tests {
             );
             assert!(loaded.accounts.encrypted, "accounts encrypted");
             assert_eq!(
-                loaded.config.password_salt, original_salt_hex,
+                *loaded.config.password_salt, original_salt_hex,
                 "salt stored"
             );
 
@@ -579,8 +578,8 @@ mod tests {
             assert_eq!(decrypted[0].issuer, "Google");
             assert_eq!(decrypted[0].label, "user@gmail.com");
             assert_eq!(decrypted[1].issuer, "GitHub");
-            assert_eq!(decrypted[1].secret, vec![6, 7, 8], "secret preserved");
-            state.set_key(right_key).unwrap();
+            assert_eq!(*decrypted[1].secret, vec![6, 7, 8], "secret preserved");
+            state.set_key(*right_key).unwrap();
             right_key.zeroize();
             for a in &mut decrypted {
                 a.secret.zeroize();
@@ -600,9 +599,9 @@ mod tests {
             );
             let mut new_key = crypto::derive_key("newpin456", &*new_salt).unwrap();
             data.accounts = crate::storage::encrypt_accounts(&decrypted, &new_key).unwrap();
-            data.config.password_salt = new_salt_hex;
+            data.config.password_salt = Zeroizing::new(new_salt_hex);
             crate::storage::save(&data).unwrap();
-            state.set_key(new_key).unwrap();
+            state.set_key(*new_key).unwrap();
             old_key.zeroize();
             new_key.zeroize();
             for a in &mut decrypted {
@@ -618,7 +617,7 @@ mod tests {
             let loaded = crate::storage::try_load().unwrap();
             assert!(loaded.config.password_protected, "still password protected");
             assert_ne!(
-                loaded.config.password_salt, original_salt_hex,
+                *loaded.config.password_salt, original_salt_hex,
                 "salt changed on disk"
             );
             let current_salt = hex::decode(&loaded.config.password_salt).unwrap();
@@ -635,7 +634,7 @@ mod tests {
             assert_eq!(decrypted[0].issuer, "Google");
             assert_eq!(decrypted[1].issuer, "GitHub");
             assert_eq!(
-                decrypted[1].secret,
+                *decrypted[1].secret,
                 vec![6, 7, 8],
                 "secret preserved after full cycle"
             );
@@ -660,7 +659,7 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = "some-salt".into();
+            data.config.password_salt = Zeroizing::new("some-salt".into());
             crate::storage::save(&data).unwrap();
 
             // Simulate set_lock guard: check password_protected → must reject
@@ -716,7 +715,7 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
             key.zeroize();
 
@@ -766,9 +765,9 @@ mod tests {
             data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
-            state.set_key(key).unwrap();
+            state.set_key(*key).unwrap();
             key.zeroize();
 
             let loaded = crate::storage::try_load().unwrap();
@@ -796,7 +795,7 @@ mod tests {
         with_fs_lock(|| {
             cleanup_auth_file();
             // Write garbage to the auth file
-            std::fs::write(crate::paths::auth_path(), "{{corrupted json[[[").unwrap();
+            std::fs::write(crate::paths::auth_path().unwrap(), "{{corrupted json[[[").unwrap();
 
             // try_load should return fresh() on parse failure (via load() fallback)
             let data = crate::storage::load();
@@ -834,7 +833,7 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
             key.zeroize();
 
@@ -858,7 +857,7 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
             key.zeroize();
 
@@ -878,8 +877,8 @@ mod tests {
         with_fs_lock(|| {
             cleanup_auth_file();
             // No auth file exists yet → export_backup will try to copy a non-existent file
-            let bad_path = crate::paths::auth_path().with_extension("auth.nonexistent");
-            let result = std::fs::copy(crate::paths::auth_path(), &bad_path);
+            let bad_path = crate::paths::auth_path().unwrap().with_extension("auth.nonexistent");
+            let result = std::fs::copy(crate::paths::auth_path().unwrap(), &bad_path);
             assert!(result.is_err(), "export from non-existent source must fail");
             cleanup_auth_file();
         });
@@ -895,21 +894,21 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
             key.zeroize();
 
             // Change to a very long PIN
-            let new_pin = "a".repeat(200);
+            let new_pin = "a".repeat(128);
             let loaded_salt = hex::decode(&data.config.password_salt).unwrap();
             let mut old_key = crypto::derive_key("short", &loaded_salt).unwrap();
             let decrypted = crate::storage::decrypt_accounts(&data.accounts, &old_key).unwrap();
             let new_salt = crypto::generate_salt();
             let mut new_key = crypto::derive_key(&new_pin, &*new_salt).unwrap();
             data.accounts = crate::storage::encrypt_accounts(&decrypted, &new_key).unwrap();
-            data.config.password_salt = hex::encode(*new_salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*new_salt));
             crate::storage::save(&data).unwrap();
-            state.set_key(new_key).unwrap();
+            state.set_key(*new_key).unwrap();
             old_key.zeroize();
             new_key.zeroize();
 
@@ -934,12 +933,12 @@ mod tests {
             assert!(state.has_key());
 
             // Create a valid backup file
-            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            let backup_path = crate::paths::auth_path().unwrap().with_extension("auth.backup");
             let data = crate::storage::try_load().unwrap();
             std::fs::write(&backup_path, serde_json::to_string_pretty(&data).unwrap()).unwrap();
 
             // Import (simulates import_backup by overwriting and clearing state)
-            let dest = crate::paths::auth_path();
+            let dest = crate::paths::auth_path().unwrap();
             std::fs::copy(&backup_path, &dest).unwrap();
             state.clear_key().unwrap();
             assert!(!state.has_key(), "import must clear key from AppState");
@@ -959,7 +958,7 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
             key.zeroize();
 
@@ -1022,7 +1021,7 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &[0xBBu8; 32]).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = "deadbeef".into();
+            data.config.password_salt = Zeroizing::new("deadbeef".into());
             crate::storage::save(&data).unwrap();
             assert!(!state.has_key());
             assert!(is_locked_impl(&state).unwrap(), "PIN + no key = locked");
@@ -1039,7 +1038,7 @@ mod tests {
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
             let err = set_lock_impl("", &state).unwrap_err();
-            assert!(err.contains("cannot be empty"), "error: {err}");
+            assert!(err.contains("too short"), "error: {err}");
             cleanup_auth_file();
         });
     }
@@ -1052,7 +1051,7 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &[0xAAu8; 32]).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = "aabbccdd".into();
+            data.config.password_salt = Zeroizing::new("aabbccdd".into());
             crate::storage::save(&data).unwrap();
             let err = set_lock_impl("mypin", &state).unwrap_err();
             assert!(err.contains("already set"), "error: {err}");
@@ -1074,8 +1073,8 @@ mod tests {
                     algorithm: crate::models::account::Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1, 2, 3, 4, 5],
-                    sort_order: 0,
+                secret: Zeroizing::new(vec![1, 2, 3, 4, 5]),
+                sort_order: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 }])
@@ -1161,7 +1160,7 @@ mod tests {
             let state = test_app_state();
             let _key = seed_encrypted_auth();
             let err = change_pin_impl("mypin", "", &state).unwrap_err();
-            assert!(err.contains("cannot be empty"), "error: {err}");
+            assert!(err.contains("too short"), "error: {err}");
             cleanup_auth_file();
         });
     }
@@ -1189,7 +1188,7 @@ mod tests {
             data.config.password_protected = false;
             crate::storage::save(&data).unwrap();
             let err = change_pin_impl("old", "new", &state).unwrap_err();
-            assert!(err.contains("not set"), "error: {err}");
+            assert!(err.contains("too short"), "error: {err}");
             cleanup_auth_file();
         });
     }
@@ -1248,7 +1247,7 @@ mod tests {
             cleanup_auth_file();
             let state = test_app_state();
             state.set_key([0x55u8; 32]).unwrap();
-            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            let backup_path = crate::paths::auth_path().unwrap().with_extension("auth.backup");
             let data = crate::storage::try_load().unwrap();
             std::fs::write(&backup_path, serde_json::to_string_pretty(&data).unwrap()).unwrap();
             import_backup_impl(&backup_path.to_string_lossy(), &state).unwrap();
@@ -1263,7 +1262,7 @@ mod tests {
         with_fs_lock(|| {
             cleanup_auth_file();
             let state = test_app_state();
-            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            let backup_path = crate::paths::auth_path().unwrap().with_extension("auth.backup");
             std::fs::write(&backup_path, "not valid json").unwrap();
             let err = import_backup_impl(&backup_path.to_string_lossy(), &state).unwrap_err();
             assert!(err.contains("invalid backup"), "error: {err}");
@@ -1294,12 +1293,12 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
             key.zeroize();
 
             // Create a valid backup file to import
-            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            let backup_path = crate::paths::auth_path().unwrap().with_extension("auth.backup");
             let backup_data = crate::storage::try_load().unwrap();
             std::fs::write(
                 &backup_path,
@@ -1327,12 +1326,11 @@ mod tests {
     // Helper: seed an encrypted auth file with PIN "mypin", returns key
     fn seed_encrypted_auth() -> Zeroizing<[u8; 32]> {
         let salt = crate::crypto::generate_salt();
-        let raw_key = crate::crypto::derive_key("mypin", &*salt).unwrap();
-        let key = Zeroizing::new(raw_key);
+        let key = crate::crypto::derive_key("mypin", &*salt).unwrap();
         let mut data = crate::storage::try_load().unwrap();
         data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
         data.config.password_protected = true;
-        data.config.password_salt = hex::encode(*salt);
+        data.config.password_salt = Zeroizing::new(hex::encode(*salt));
         crate::storage::save(&data).unwrap();
         key
     }
@@ -1349,7 +1347,7 @@ mod tests {
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
             // Corrupt the salt: invalid hex characters
-            data.config.password_salt = "not-hex!!gg".into();
+            data.config.password_salt = Zeroizing::new("not-hex!!gg".into());
             crate::storage::save(&data).unwrap();
             key.zeroize();
 
@@ -1372,7 +1370,7 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
             key.zeroize();
 
@@ -1736,13 +1734,13 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts.data_json = "[]".into();
             crate::storage::save(&data).unwrap();
-            set_lock_impl("pin", &state).unwrap();
+            set_lock_impl("pin123", &state).unwrap();
             let loaded = crate::storage::try_load().unwrap();
             assert!(loaded.config.password_protected);
             assert!(loaded.accounts.encrypted);
             // Decrypt should yield empty vec
             let salt = hex::decode(&loaded.config.password_salt).unwrap();
-            let mut key = crate::crypto::derive_key("pin", &salt).unwrap();
+            let mut key = crate::crypto::derive_key("pin123", &salt).unwrap();
             let accounts = crate::storage::decrypt_accounts(&loaded.accounts, &key).unwrap();
             assert!(accounts.is_empty());
             key.zeroize();
@@ -1767,7 +1765,7 @@ mod tests {
                 algorithm: crate::models::account::Algorithm::SHA256,
                 digits: 8,
                 period: 60,
-                secret: vec![10, 20, 30, 40],
+                secret: Zeroizing::new(vec![10, 20, 30, 40]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -1776,7 +1774,7 @@ mod tests {
             crate::storage::save(&data).unwrap();
 
             // Export backup
-            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            let backup_path = crate::paths::auth_path().unwrap().with_extension("auth.backup");
             export_backup(backup_path.to_string_lossy().to_string()).unwrap();
 
             // Wipe original
@@ -1791,7 +1789,7 @@ mod tests {
             // Restore backup
             let raw = std::fs::read_to_string(&backup_path).unwrap();
             let _backup: crate::storage::auth_file::AuthData = serde_json::from_str(&raw).unwrap();
-            let dest = crate::paths::auth_path();
+            let dest = crate::paths::auth_path().unwrap();
             std::fs::copy(&backup_path, &dest).unwrap();
 
             // Verify restored
@@ -1803,7 +1801,7 @@ mod tests {
             assert_eq!(restored_accounts[0].issuer, "BackupIssuer");
             assert_eq!(restored_accounts[0].digits, 8);
             assert_eq!(restored_accounts[0].period, 60);
-            assert_eq!(restored_accounts[0].secret, vec![10, 20, 30, 40]);
+            assert_eq!(*restored_accounts[0].secret, vec![10, 20, 30, 40]);
 
             let _ = std::fs::remove_file(&backup_path);
             cleanup_auth_file();
@@ -1817,7 +1815,7 @@ mod tests {
             let data = crate::storage::try_load().unwrap();
             crate::storage::save(&data).unwrap();
 
-            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            let backup_path = crate::paths::auth_path().unwrap().with_extension("auth.backup");
             export_backup(backup_path.to_string_lossy().to_string()).unwrap();
             let first = std::fs::read_to_string(&backup_path).unwrap();
 
@@ -1894,7 +1892,7 @@ mod tests {
                     algorithm: crate::models::account::Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: b"1234567890123456".to_vec(),
+                    secret: Zeroizing::new(b"1234567890123456".to_vec()),
                     sort_order: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -1903,9 +1901,9 @@ mod tests {
             )
             .unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
-            state.set_key(key).unwrap();
+            state.set_key(*key).unwrap();
 
             // Now corrupt the encrypted payload (make ciphertext invalid)
             let mut data = crate::storage::try_load().unwrap();
@@ -1936,7 +1934,7 @@ mod tests {
             crate::storage::save(&data).unwrap();
 
             // Copy auth file to a temp path, then import from there (avoids self-copy truncation on Linux)
-            let auth_path = crate::paths::auth_path();
+            let auth_path = crate::paths::auth_path().unwrap();
             let temp_path = auth_path.with_extension("auth.bak");
             std::fs::copy(&auth_path, &temp_path).unwrap();
 
@@ -1962,7 +1960,7 @@ mod tests {
             let _state = test_app_state();
 
             // Write valid JSON that doesn't match AuthData schema
-            let backup_path = crate::paths::auth_path().with_extension("auth.backup");
+            let backup_path = crate::paths::auth_path().unwrap().with_extension("auth.backup");
             std::fs::write(&backup_path, r#"{"wrong_key": true, "numbers": [1, 2, 3]}"#).unwrap();
 
             let err = import_backup_impl(&backup_path.to_string_lossy(), &_state).unwrap_err();
@@ -1988,12 +1986,12 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = hex::encode(*salt);
+            data.config.password_salt = Zeroizing::new(hex::encode(*salt));
             crate::storage::save(&data).unwrap();
 
             // Now corrupt the salt to invalid hex
             let mut data = crate::storage::try_load().unwrap();
-            data.config.password_salt = "zz_not_hex".into();
+            data.config.password_salt = Zeroizing::new("zz_not_hex".into());
             crate::storage::save(&data).unwrap();
 
             // unlock_impl must fail with salt decode error
@@ -2081,8 +2079,8 @@ mod tests {
             cleanup_auth_file();
             let state = test_app_state();
             let _key = seed_encrypted_auth();
-            let result = verify_pin_impl("", &state).unwrap();
-            assert!(!result, "empty PIN must return false (not panic)");
+            let err = verify_pin_impl("", &state).unwrap_err();
+            assert!(err.contains("too short"), "error: {err}");
             cleanup_auth_file();
         });
     }

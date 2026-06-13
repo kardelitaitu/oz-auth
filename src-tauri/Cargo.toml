@@ -1,6 +1,6 @@
 [package]
 name = "oz-auth"
-version = "0.1.5"
+version = "0.1.6"
 authors = ["kardelitaitu"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
@@ -25,7 +25,7 @@ aes-gcm = "0.10"
 argon2 = "0.5"
 hex = "0.4"
 rand = "0.8"
-zeroize = { version = "1.9", features = ["derive"] }
+zeroize = { version = "1.9", features = ["derive", "serde"] }
 sha2 = "0.10"
 libc = "0.2"
 

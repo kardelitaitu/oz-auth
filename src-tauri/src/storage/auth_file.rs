@@ -84,20 +84,24 @@ pub static FS_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 // ── Public API ──────────────────────────────────────────────
 
-pub fn auth_path() -> std::path::PathBuf {
+pub fn auth_path() -> Result<std::path::PathBuf, String> {
     crate::paths::auth_path()
 }
 
 pub fn exists() -> bool {
-    auth_path().exists()
+    auth_path().map(|p| p.exists()).unwrap_or(false)
 }
 
 pub fn load() -> AuthData {
     try_load().unwrap_or_else(|_| fresh())
 }
 
+fn default_auth_path() -> std::path::PathBuf {
+    crate::paths::auth_path().unwrap_or_else(|_| std::path::PathBuf::from("default.auth"))
+}
+
 pub fn try_load() -> Result<AuthData, String> {
-    let path = auth_path();
+    let path = auth_path()?;
     if !path.exists() {
         return Ok(fresh());
     }
@@ -112,7 +116,7 @@ pub fn try_load() -> Result<AuthData, String> {
     let reconciled = reconcile_invariants(&mut data);
 
     if upgraded || reconciled {
-        save(&data)?;
+        flush_and_save(&mut data)?;
     }
 
     Ok(data)
@@ -125,22 +129,21 @@ pub fn flush_and_save(data: &mut AuthData) -> Result<(), String> {
     data.audit_trail = crate::audit::flush();
     let json = serde_json::to_string_pretty(data)
         .map_err(|e| format!("failed to serialize auth data: {e}"))?;
-    atomic_write(&auth_path(), &json)
+    atomic_write(&auth_path()?, &json)
 }
 
 pub fn save(data: &AuthData) -> Result<(), String> {
     let json = serde_json::to_string_pretty(data)
         .map_err(|e| format!("failed to serialize auth data: {e}"))?;
-    atomic_write(&auth_path(), &json)
+    atomic_write(&auth_path()?, &json)
 }
 
 /// Atomic write: write to a temp file, then rename over the target.
-/// This prevents data loss if the process crashes mid-write.
+/// Uses a random suffix to avoid collisions from concurrent writers.
 fn atomic_write(target: &std::path::Path, contents: &str) -> Result<(), String> {
     let dir = target.parent().unwrap_or_else(|| std::path::Path::new("."));
-    let mut tmp = dir.join(".auth.tmp");
-    // Ensure unique temp name to avoid collisions from concurrent writers
-    tmp.set_extension("tmp");
+    let tmp_name = format!(".auth.{:016x}.tmp", rand::random::<u64>());
+    let tmp = dir.join(tmp_name);
 
     std::fs::write(&tmp, contents)
         .map_err(|e| format!("failed to write temp file {}: {e}", tmp.display()))?;
@@ -297,6 +300,7 @@ fn reconcile_invariants(data: &mut AuthData) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use zeroize::Zeroizing;
 
     fn test_account() -> Account {
         Account {
@@ -306,7 +310,7 @@ mod tests {
             algorithm: crate::models::account::Algorithm::SHA1,
             digits: 6,
             period: 30,
-            secret: vec![1, 2, 3],
+            secret: Zeroizing::new(vec![1, 2, 3]),
             sort_order: 0,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -406,7 +410,7 @@ mod tests {
     #[test]
     fn test_reconcile_invariants_salt_cleared_when_unprotected() {
         let mut data = fresh();
-        data.config.password_salt = "old-salt".into();
+        data.config.password_salt = Zeroizing::new("old-salt".into());
         reconcile_invariants(&mut data);
         assert!(data.config.password_salt.is_empty());
     }
@@ -467,7 +471,7 @@ mod tests {
             algorithm: crate::models::account::Algorithm::SHA256,
             digits: 8,
             period: 60,
-            secret: vec![9, 8, 7],
+            secret: Zeroizing::new(vec![9, 8, 7]),
             sort_order: 1,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -510,7 +514,7 @@ mod tests {
                 algorithm: algo,
                 digits,
                 period,
-                secret: secret.clone(),
+                secret: Zeroizing::new(secret.clone()),
                 sort_order: i as u32,
                 created_at: now,
                 updated_at: now,
@@ -545,7 +549,7 @@ mod tests {
 
             // Verify secret survived encrypt→decrypt cycle
             let expected_secret: Vec<u8> = (0u8..10).map(|j| (i as u8).wrapping_add(j)).collect();
-            assert_eq!(a.secret, expected_secret, "secret mismatch at index {i}");
+            assert_eq!(*a.secret, expected_secret, "secret mismatch at index {i}");
 
             assert_eq!(a.sort_order, i as u32);
 
@@ -702,7 +706,7 @@ mod tests {
         let mut data = fresh();
         data.accounts.encrypted = true;
         data.config.password_protected = false;
-        data.config.password_salt = "should-remain".into();
+        data.config.password_salt = Zeroizing::new("should-remain".into());
         assert!(
             reconcile_invariants(&mut data),
             "should trigger encrypted→protected fix"
@@ -710,7 +714,7 @@ mod tests {
         assert!(data.config.password_protected, "should become protected");
         // Salt is NOT cleared because password_protected is now true after step 1
         assert_eq!(
-            data.config.password_salt, "should-remain",
+            *data.config.password_salt, "should-remain",
             "salt NOT cleared because password_protected was set to true in step 1"
         );
     }
@@ -760,7 +764,7 @@ mod tests {
         account.algorithm = crate::models::account::Algorithm::SHA512;
         account.digits = 8;
         account.period = 90;
-        account.secret = vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE];
+        account.secret = Zeroizing::new(vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE]);
         account.sort_order = 42;
         account.created_at = now;
         account.updated_at = now;
@@ -776,11 +780,10 @@ mod tests {
             crate::models::account::Algorithm::SHA512
         ));
         assert_eq!(decrypted[0].digits, 8);
-        assert_eq!(decrypted[0].period, 90);
-        assert_eq!(
-            decrypted[0].secret,
-            vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE]
-        );
+        assert_eq!(decrypted[0].period, 90);            assert_eq!(
+                *decrypted[0].secret,
+                vec![0xDE, 0xAD, 0xBE, 0xEF, 0xCA, 0xFE]
+            );
         assert_eq!(decrypted[0].sort_order, 42);
         for a in &mut decrypted {
             a.secret.zeroize();
@@ -792,7 +795,7 @@ mod tests {
     fn test_try_load_reconcile_saves_to_disk() {
         let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
         // Remove any existing auth file
-        let path = auth_path();
+        let path = auth_path().unwrap();
         let _ = std::fs::remove_file(&path);
 
         // Manually write an inconsistent .auth file:
@@ -824,7 +827,7 @@ mod tests {
     #[test]
     fn test_exists_returns_false_when_no_file() {
         let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let path = auth_path();
+        let path = auth_path().unwrap();
         let _ = std::fs::remove_file(&path);
         assert!(!exists(), "exists() should return false when no .auth file");
     }
@@ -832,7 +835,7 @@ mod tests {
     #[test]
     fn test_try_load_with_corrupted_json_returns_error() {
         let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let path = auth_path();
+        let path = auth_path().unwrap();
         let _ = std::fs::remove_file(&path);
         std::fs::write(&path, "{{corrupted json[[[").unwrap();
         let result = try_load();
@@ -914,7 +917,7 @@ mod tests {
                 always_on_top: false,
                 theme: "dark".into(),
                 password_protected: false,
-                password_salt: String::new(),
+                password_salt: Zeroizing::new(String::new()),
                 lock_timeout_seconds: 300,
                 clipboard_clear_seconds: 30,
                 lock_on_focus_loss: false,
@@ -956,7 +959,7 @@ mod tests {
     #[test]
     fn test_upgrade_from_missing_version_saves_to_disk() {
         let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let path = auth_path();
+        let path = auth_path().unwrap();
         let _ = std::fs::remove_file(&path);
 
         // Write a file without version field
@@ -1012,7 +1015,7 @@ mod tests {
     fn test_version_greater_than_current_does_not_crash_on_load() {
         // End-to-end: write a v999 file to disk, load it, verify no crash
         let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let path = auth_path();
+        let path = auth_path().unwrap();
         let _ = std::fs::remove_file(&path);
 
         let json = r#"{"version":999,"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":""}"#;
@@ -1059,7 +1062,7 @@ mod tests {
     fn test_v1_file_upgraded_to_v2_on_disk() {
         // Write a v1 file to disk, load it, verify it gets upgraded to v2
         let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let path = auth_path();
+        let path = auth_path().unwrap();
         let _ = std::fs::remove_file(&path);
 
         let v1_json = r#"{"version":1,"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":""}"#;
@@ -1082,7 +1085,7 @@ mod tests {
     fn test_v2_file_with_notes_preserved_on_roundtrip() {
         // A v2 file with custom notes should preserve them through save/load
         let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let path = auth_path();
+        let path = auth_path().unwrap();
         let _ = std::fs::remove_file(&path);
 
         let v2_json = r#"{"version":2,"config":{"width":320,"height":480,"left":100,"top":100,"always_on_top":false},"accounts":{"encrypted":false,"data_json":"[]"},"log":"","notes":"My custom notes"}"#;
@@ -1110,7 +1113,7 @@ mod tests {
         // A truly minimal .auth file with only password_protected in config
         // and accounts.encrypted + data_json. Everything else should use serde defaults.
         let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let path = auth_path();
+        let path = auth_path().unwrap();
         let _ = std::fs::remove_file(&path);
 
         let minimal = r#"{"config":{"password_protected":false},"accounts":{"encrypted":false,"data_json":"[]"}}"#;
@@ -1181,7 +1184,7 @@ mod tests {
     #[test]
     fn test_exists_returns_true_when_file_present() {
         let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let path = auth_path();
+        let path = auth_path().unwrap();
         let _ = std::fs::remove_file(&path);
         // Create a fresh auth file
         let data = fresh();
@@ -1235,7 +1238,7 @@ mod tests {
         let mut data = fresh();
         data.accounts.encrypted = false;
         data.config.password_protected = false;
-        data.config.password_salt = "aabbccdd".into();
+        data.config.password_salt = Zeroizing::new("aabbccdd".into());
         let changed = reconcile_invariants(&mut data);
         assert!(
             changed,
@@ -1261,7 +1264,7 @@ mod tests {
     #[test]
     fn test_try_load_truncated_json_returns_error() {
         let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let path = auth_path();
+        let path = auth_path().unwrap();
         let _ = std::fs::remove_file(&path);
 
         // Write truncated JSON (valid start, but cut off)
@@ -1275,7 +1278,7 @@ mod tests {
     #[test]
     fn test_try_load_empty_file_returns_error() {
         let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let path = auth_path();
+        let path = auth_path().unwrap();
         let _ = std::fs::remove_file(&path);
 
         std::fs::write(&path, "").unwrap();
@@ -1288,7 +1291,7 @@ mod tests {
     #[test]
     fn test_try_load_non_json_garbage_returns_error() {
         let _lock = FS_TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
-        let path = auth_path();
+        let path = auth_path().unwrap();
         let _ = std::fs::remove_file(&path);
 
         std::fs::write(&path, "this is not json at all {{{").unwrap();
@@ -1307,18 +1310,17 @@ mod tests {
         let mut data = fresh();
         data.accounts.encrypted = true;
         data.config.password_protected = false;
-        data.config.password_salt = "aabbccdd".into();
+        data.config.password_salt = Zeroizing::new("aabbccdd".into());
         data.accounts.data_json = "".into();
         let changed = reconcile_invariants(&mut data);
         assert!(changed, "must trigger change");
         assert!(
             data.config.password_protected,
             "must set password_protected=true"
-        );
-        assert_eq!(
-            data.config.password_salt, "aabbccdd",
-            "salt preserved for encrypted accounts"
-        );
+        );        assert_eq!(
+                *data.config.password_salt, "aabbccdd",
+                "salt preserved for encrypted accounts"
+            );
         assert_eq!(
             data.accounts.data_json, "",
             "data_json untouched when encrypted"
@@ -1330,7 +1332,7 @@ mod tests {
         let mut data = fresh();
         data.accounts.encrypted = true;
         data.config.password_protected = true;
-        data.config.password_salt = "aabbccdd".into();
+        data.config.password_salt = Zeroizing::new("aabbccdd".into());
         data.accounts.data_json = r#"[{"id":"x"}]"#.into();
         let changed = reconcile_invariants(&mut data);
         assert!(!changed, "consistent state must not trigger change");
@@ -1341,7 +1343,7 @@ mod tests {
         let mut data = fresh();
         data.version = 0;
         data.config.password_protected = true;
-        data.config.password_salt = "aabbccdd".into();
+        data.config.password_salt = Zeroizing::new("aabbccdd".into());
         data.accounts.encrypted = true;
         data.accounts.ciphertext_hex = Some("deadbeef".into());
         data.accounts.nonce_hex = Some("aabb".into());
@@ -1354,7 +1356,7 @@ mod tests {
             "encryption flag must survive upgrade"
         );
         assert_eq!(
-            data.config.password_salt, "aabbccdd",
+            *data.config.password_salt, "aabbccdd",
             "salt must survive upgrade"
         );
     }

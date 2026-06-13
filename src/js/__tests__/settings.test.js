@@ -50,7 +50,7 @@ describe("openSettings", () => {
 
     expect(cfg.settingsOverlay.classList.contains("hidden")).toBe(false);
     expect(cfg.settingsTitle.textContent).toBe("Settings");
-    expect(cfg.settingsBody.innerHTML.length).toBeGreaterThan(0);
+    expect(cfg.settingsBody.children.length).toBeGreaterThan(0);
   });
 
   it("shows 'Set PIN' section when no password configured", async () => {
@@ -62,8 +62,8 @@ describe("openSettings", () => {
 
     await new Promise(process.nextTick);
 
-    expect(cfg.settingsBody.innerHTML).toContain("Set PIN");
-    expect(cfg.settingsBody.innerHTML).not.toContain("Change PIN");
+    expect(cfg.settingsBody.textContent).toContain("Set PIN");
+    expect(cfg.settingsBody.textContent).not.toContain("Change PIN");
   });
 
   it("shows 'Change PIN' section when password is set", async () => {
@@ -75,8 +75,8 @@ describe("openSettings", () => {
 
     await new Promise(process.nextTick);
 
-    expect(cfg.settingsBody.innerHTML).toContain("Change PIN");
-    expect(cfg.settingsBody.innerHTML).toContain("Lock Now");
+    expect(cfg.settingsBody.textContent).toContain("Change PIN");
+    expect(cfg.settingsBody.textContent).toContain("Lock Now");
   });
 
   it("shows backup section, audit log section, and about area", async () => {
@@ -85,11 +85,11 @@ describe("openSettings", () => {
 
     await new Promise(process.nextTick);
 
-    expect(cfg.settingsBody.innerHTML).toContain("Backup");
-    expect(cfg.settingsBody.innerHTML).toContain("Audit Log");
+    expect(cfg.settingsBody.textContent).toContain("Backup");
+    expect(cfg.settingsBody.textContent).toContain("Audit Log");
     // The about section has the app name (no literal "About" text label)
-    expect(cfg.settingsBody.innerHTML).toContain("oz-auth");
-    expect(cfg.settingsBody.innerHTML).toContain("0.1.4");
+    expect(cfg.settingsBody.textContent).toContain("oz-auth");
+    expect(cfg.settingsBody.textContent).toContain("0.1.4");
   });
 
   it("displays app name and version", async () => {
@@ -98,8 +98,8 @@ describe("openSettings", () => {
 
     await new Promise(process.nextTick);
 
-    expect(cfg.settingsBody.innerHTML).toContain("oz-auth");
-    expect(cfg.settingsBody.innerHTML).toContain("0.1.4");
+    expect(cfg.settingsBody.textContent).toContain("oz-auth");
+    expect(cfg.settingsBody.textContent).toContain("0.1.4");
   });
 
   it("close button hides overlay", async () => {
@@ -296,10 +296,10 @@ describe("openSettings", () => {
     await new Promise(process.nextTick);
 
     const auditBody = document.getElementById("audit-log-body");
-    expect(auditBody.innerHTML).toContain("App started");
-    expect(auditBody.innerHTML).toContain("Account added");
-    expect(auditBody.innerHTML).toContain("startup");
-    expect(auditBody.innerHTML).toContain("account");
+    expect(auditBody.textContent).toContain("App started");
+    expect(auditBody.textContent).toContain("Account added");
+    expect(auditBody.textContent).toContain("startup");
+    expect(auditBody.textContent).toContain("account");
     expect(toggleBtn.textContent).toBe("Hide");
   });
 

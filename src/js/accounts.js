@@ -17,48 +17,115 @@ export function escapeHtml(s) {
  * Render account cards into the account list container.
  * `callbacks` must provide: onCopy, onEdit, onDelete, onContextMenu
  * Drag & drop handlers are attached by the caller via setupDragDrop.
+ * All content built with DOM APIs (no innerHTML) to prevent XSS.
  */
 export function renderAccounts(accounts, accountListEl, callbacks) {
   const { onCopy, onContextMenu } = callbacks;
   accountListEl.innerHTML = "";
 
   if (accounts.length === 0) {
-    accountListEl.innerHTML = '<div class="empty-state">No accounts yet.<br>Click + to add one.</div>';
+    const empty = document.createElement("div");
+    empty.className = "empty-state";
+    empty.appendChild(document.createTextNode("No accounts yet."));
+    empty.appendChild(document.createElement("br"));
+    empty.appendChild(document.createTextNode("Click + to add one."));
+    accountListEl.appendChild(empty);
     return;
   }
+
+  const SVG_NS = "http://www.w3.org/2000/svg";
 
   accounts.forEach((a) => {
     const card = document.createElement("div");
     card.className = "account-card";
     card.dataset.id = a.id;
-    const safeId = escapeHtml(a.id);
-    card.innerHTML = `
-      <div class="card-drag-handle" title="Drag to reorder">
-        <span></span><span></span><span></span>
-      </div>
-      <div class="card-main-row">
-        <div class="card-col-1">
-          <span class="card-issuer">${escapeHtml(a.issuer)}</span>
-          <span class="card-label">${escapeHtml(a.label)}</span>
-        </div>
-        <div class="card-col-2">
-          <span class="card-code" data-id="${safeId}">------</span>
-        </div>
-        <div class="card-col-3">
-          <svg class="card-ring" viewBox="0 0 44 44" width="44" height="44" data-id="${safeId}">
-            <circle cx="22" cy="22" r="19" fill="none" class="ring-bg"/>
-            <circle cx="22" cy="22" r="19" fill="none" class="ring-fg"
-              data-id="${safeId}"
-              stroke-dasharray="119.381" stroke-dashoffset="119.381"
-              transform="rotate(-90 22 22)"/>
-            <text x="22" y="22" data-id="${safeId}" class="ring-text">--</text>
-          </svg>
-        </div>
-      </div>
-    `;
 
-    // Click to copy
-    card.querySelector(".card-code").addEventListener("click", () => onCopy(a.id));
+    // ── Drag handle ────────────────────────────────────────
+    const dragHandle = document.createElement("div");
+    dragHandle.className = "card-drag-handle";
+    dragHandle.title = "Drag to reorder";
+    for (let i = 0; i < 3; i++) {
+      dragHandle.appendChild(document.createElement("span"));
+    }
+    card.appendChild(dragHandle);
+
+    // ── Main row ───────────────────────────────────────────
+    const mainRow = document.createElement("div");
+    mainRow.className = "card-main-row";
+
+    // Column 1: issuer + label
+    const col1 = document.createElement("div");
+    col1.className = "card-col-1";
+
+    const issuerSpan = document.createElement("span");
+    issuerSpan.className = "card-issuer";
+    issuerSpan.textContent = a.issuer;
+    col1.appendChild(issuerSpan);
+
+    const labelSpan = document.createElement("span");
+    labelSpan.className = "card-label";
+    labelSpan.textContent = a.label;
+    col1.appendChild(labelSpan);
+
+    mainRow.appendChild(col1);
+
+    // Column 2: TOTP code
+    const col2 = document.createElement("div");
+    col2.className = "card-col-2";
+
+    const codeSpan = document.createElement("span");
+    codeSpan.className = "card-code";
+    codeSpan.dataset.id = a.id;
+    codeSpan.textContent = "------";
+    codeSpan.addEventListener("click", () => onCopy(a.id));
+    col2.appendChild(codeSpan);
+
+    mainRow.appendChild(col2);
+
+    // Column 3: SVG countdown ring
+    const col3 = document.createElement("div");
+    col3.className = "card-col-3";
+
+    const svg = document.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("class", "card-ring");
+    svg.setAttribute("viewBox", "0 0 44 44");
+    svg.setAttribute("width", "44");
+    svg.setAttribute("height", "44");
+    svg.dataset.id = a.id;
+
+    const bgCircle = document.createElementNS(SVG_NS, "circle");
+    bgCircle.setAttribute("cx", "22");
+    bgCircle.setAttribute("cy", "22");
+    bgCircle.setAttribute("r", "19");
+    bgCircle.setAttribute("fill", "none");
+    bgCircle.setAttribute("class", "ring-bg");
+    svg.appendChild(bgCircle);
+
+    const fgCircle = document.createElementNS(SVG_NS, "circle");
+    fgCircle.setAttribute("cx", "22");
+    fgCircle.setAttribute("cy", "22");
+    fgCircle.setAttribute("r", "19");
+    fgCircle.setAttribute("fill", "none");
+    fgCircle.setAttribute("class", "ring-fg");
+    fgCircle.dataset.id = a.id;
+    fgCircle.setAttribute("stroke-dasharray", "119.381");
+    fgCircle.setAttribute("stroke-dashoffset", "119.381");
+    fgCircle.setAttribute("transform", "rotate(-90 22 22)");
+    svg.appendChild(fgCircle);
+
+    const ringText = document.createElementNS(SVG_NS, "text");
+    ringText.setAttribute("x", "22");
+    ringText.setAttribute("y", "22");
+    ringText.dataset.id = a.id;
+    ringText.setAttribute("class", "ring-text");
+    ringText.textContent = "--";
+    svg.appendChild(ringText);
+
+    col3.appendChild(svg);
+    mainRow.appendChild(col3);
+
+    card.appendChild(mainRow);
+
     // Right-click context menu
     card.addEventListener("contextmenu", (e) => {
       e.preventDefault();

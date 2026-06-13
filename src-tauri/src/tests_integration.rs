@@ -45,7 +45,7 @@ macro_rules! mock_app {
 }
 
 fn cleanup_auth_file() {
-    let path = crate::paths::auth_path();
+    let path = crate::paths::auth_path().unwrap();
     if path.exists() {
         let _ = std::fs::remove_file(&path);
     }
@@ -139,7 +139,7 @@ fn test_set_lock_with_accounts_via_mock() {
             algorithm: crate::models::account::Algorithm::SHA1,
             digits: 6,
             period: 30,
-            secret: vec![1, 2, 3, 4, 5],
+            secret: Zeroizing::new(vec![1, 2, 3, 4, 5]),
             sort_order: 0,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -178,7 +178,7 @@ fn test_set_lock_rejects_when_already_protected_via_mock() {
         let mut data = crate::storage::try_load().unwrap();
         data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
         data.config.password_protected = true;
-        data.config.password_salt = "aabbccdd".into();
+        data.config.password_salt = Zeroizing::new("aabbccdd".into());
         crate::storage::save(&data).unwrap();
 
         // set_lock must reject
@@ -209,7 +209,7 @@ fn test_unlock_wrong_pin_returns_false_via_mock() {
         let mut data = crate::storage::try_load().unwrap();
         data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
         data.config.password_protected = true;
-        data.config.password_salt = hex::encode(*salt);
+        data.config.password_salt = Zeroizing::new(hex::encode(*salt));
         crate::storage::save(&data).unwrap();
         key.zeroize();
 
@@ -240,7 +240,7 @@ fn test_unlock_correct_pin_sets_key_via_mock() {
         let mut data = crate::storage::try_load().unwrap();
         data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
         data.config.password_protected = true;
-        data.config.password_salt = hex::encode(*salt);
+        data.config.password_salt = Zeroizing::new(hex::encode(*salt));
         crate::storage::save(&data).unwrap();
         key.zeroize();
 
@@ -401,20 +401,20 @@ fn test_list_accounts_via_mock() {
                 algorithm: crate::models::account::Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1, 2, 3],
-                sort_order: 0,
-                created_at: chrono::Utc::now(),
-                updated_at: chrono::Utc::now(),
-            },
-            crate::models::account::Account {
+            secret: Zeroizing::new(vec![1, 2, 3]),
+            sort_order: 0,
+            created_at: chrono::Utc::now(),
+            updated_at: chrono::Utc::now(),
+        },
+        crate::models::account::Account {
                 id: "id-2".into(),
                 issuer: "Beta".into(),
                 label: "beta@test.com".into(),
                 algorithm: crate::models::account::Algorithm::SHA256,
                 digits: 8,
                 period: 60,
-                secret: vec![4, 5, 6],
-                sort_order: 1,
+            secret: Zeroizing::new(vec![4, 5, 6]),
+            sort_order: 1,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             },
@@ -454,8 +454,8 @@ fn test_list_accounts_with_search_via_mock() {
                 algorithm: crate::models::account::Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1],
-                sort_order: 0,
+            secret: Zeroizing::new(vec![1]),
+            sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             },
@@ -466,8 +466,8 @@ fn test_list_accounts_with_search_via_mock() {
                 algorithm: crate::models::account::Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![2],
-                sort_order: 1,
+            secret: Zeroizing::new(vec![2]),
+            sort_order: 1,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             },
@@ -507,7 +507,7 @@ fn test_update_account_via_mock() {
             algorithm: crate::models::account::Algorithm::SHA1,
             digits: 6,
             period: 30,
-            secret: vec![1, 2, 3],
+            secret: Zeroizing::new(vec![1, 2, 3]),
             sort_order: 0,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -555,8 +555,8 @@ fn test_remove_account_via_mock() {
                 algorithm: crate::models::account::Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1],
-                sort_order: 0,
+            secret: Zeroizing::new(vec![1]),
+            sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             },
@@ -567,8 +567,8 @@ fn test_remove_account_via_mock() {
                 algorithm: crate::models::account::Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![2],
-                sort_order: 1,
+            secret: Zeroizing::new(vec![2]),
+            sort_order: 1,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
             },
@@ -666,7 +666,7 @@ fn test_is_locked_returns_true_when_pin_set_and_no_key_via_mock() {
         let mut data = crate::storage::try_load().unwrap();
         data.accounts = crate::storage::encrypt_accounts(&[], &key).unwrap();
         data.config.password_protected = true;
-        data.config.password_salt = "deadbeef".into();
+        data.config.password_salt = Zeroizing::new("deadbeef".into());
         crate::storage::save(&data).unwrap();
 
         // is_locked returns Ok(true) when PIN is set but no key in state

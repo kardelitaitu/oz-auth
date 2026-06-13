@@ -30,6 +30,7 @@ fn urlencoding(s: &str) -> String {
 // ── get_otpauth_uri ─────────────────────────────────────────
 
 fn get_otpauth_uri_impl(account_id: &str, state: &AppState) -> Result<String, String> {
+    crate::commands::validate_length(account_id, 1, crate::commands::MAX_ID_LEN, "account ID")?;
     let data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
@@ -99,8 +100,8 @@ fn save_backup_file_impl(state: &AppState) -> Result<String, String> {
         return Err("no accounts to backup".to_string());
     }
 
-    let exe_stem = crate::paths::exe_stem();
-    let exe_dir = crate::paths::exe_dir();
+    let exe_stem = crate::paths::exe_stem()?;
+    let exe_dir = crate::paths::exe_dir()?;
 
     // Build the file content
     let timestamp = chrono::Utc::now().format("%Y-%m-%d %H:%M:%S");
@@ -149,8 +150,8 @@ mod tests {
     use crate::test_utils::{cleanup_auth_file, test_app_state, test_key, with_fs_lock};
 
     fn backup_paths_cleanup() {
-        let exe_dir = crate::paths::exe_dir();
-        let exe_stem = crate::paths::exe_stem();
+        let exe_dir = crate::paths::exe_dir().unwrap();
+        let exe_stem = crate::paths::exe_stem().unwrap();
         let base = format!("{}.backup.txt", exe_stem);
         let base_path = exe_dir.join(&base);
         if base_path.exists() {
@@ -242,7 +243,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1u8; 20],
+                secret: Zeroizing::new(vec![1u8; 20]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -282,7 +283,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1u8; 20],
+                secret: Zeroizing::new(vec![1u8; 20]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -310,7 +311,7 @@ mod tests {
                 algorithm: Algorithm::SHA256,
                 digits: 8,
                 period: 60,
-                secret: vec![2u8; 20],
+                secret: Zeroizing::new(vec![2u8; 20]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -340,7 +341,7 @@ mod tests {
                 algorithm: Algorithm::SHA512,
                 digits: 6,
                 period: 30,
-                secret: vec![3u8; 20],
+                secret: Zeroizing::new(vec![3u8; 20]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -369,7 +370,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: known_hex,
+                secret: Zeroizing::new(known_hex),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -409,7 +410,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1u8; 20],
+                secret: Zeroizing::new(vec![1u8; 20]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -447,7 +448,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1u8; 20],
+                    secret: Zeroizing::new(vec![1u8; 20]),
                     sort_order: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -459,8 +460,8 @@ mod tests {
                     algorithm: Algorithm::SHA256,
                     digits: 6,
                     period: 30,
-                    secret: vec![2u8; 20],
-                    sort_order: 1,
+                secret: Zeroizing::new(vec![2u8; 20]),
+                sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 },
@@ -514,7 +515,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![9u8; 20],
+                secret: Zeroizing::new(vec![9u8; 20]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -547,7 +548,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1u8; 20],
+                secret: Zeroizing::new(vec![1u8; 20]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -611,7 +612,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1u8; 20],
+                secret: Zeroizing::new(vec![1u8; 20]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -625,8 +626,8 @@ mod tests {
                 "first backup path: {path1}"
             );
 
-            let exe_dir = crate::paths::exe_dir();
-            let exe_stem = crate::paths::exe_stem();
+            let exe_dir = crate::paths::exe_dir().unwrap();
+            let exe_stem = crate::paths::exe_stem().unwrap();
             let second_variant = exe_dir.join(format!("{}.backup (1).txt", exe_stem));
             std::fs::write(&second_variant, "fake").unwrap();
 
@@ -656,7 +657,7 @@ mod tests {
                     algorithm: Algorithm::SHA1,
                     digits: 6,
                     period: 30,
-                    secret: vec![1u8; 20],
+                    secret: Zeroizing::new(vec![1u8; 20]),
                     sort_order: 0,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
@@ -668,8 +669,8 @@ mod tests {
                     algorithm: Algorithm::SHA256,
                     digits: 8,
                     period: 60,
-                    secret: vec![2u8; 20],
-                    sort_order: 1,
+                secret: Zeroizing::new(vec![2u8; 20]),
+                sort_order: 1,
                     created_at: chrono::Utc::now(),
                     updated_at: chrono::Utc::now(),
                 },
@@ -717,7 +718,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1u8; 20],
+                secret: Zeroizing::new(vec![1u8; 20]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),

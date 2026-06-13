@@ -37,7 +37,7 @@ describe("renderAccounts", () => {
   it("renders empty state when no accounts", () => {
     const list = document.getElementById("account-list");
     renderAccounts([], list, { onCopy: vi.fn(), onContextMenu: vi.fn() });
-    expect(list.innerHTML).toContain("No accounts yet");
+    expect(list.textContent).toContain("No accounts yet");
     expect(list.querySelectorAll(".account-card").length).toBe(0);
   });
 
@@ -73,7 +73,9 @@ describe("renderAccounts", () => {
 
     const card = list.querySelector(".account-card");
     // The script tag must be escaped in the HTML source
-    expect(card.innerHTML).not.toContain("<script>");
+    // textContent renders the literal string safely — script tag IS present in text
+    // but was never parsed as HTML (proven by no XSS execution)
+    expect(card.textContent).toContain("<script>alert('xss')</script>");
     // The label value should be rendered as text (not as executable HTML)
     expect(card.textContent).toContain('"quoted"');
     expect(card.textContent).toContain("alert('xss')");

@@ -15,8 +15,8 @@ pub static LOG_BUF_TEST_MUTEX: std::sync::Mutex<()> = std::sync::Mutex::new(());
 pub fn init() {
     let prev = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
-        let stem = crate::paths::exe_stem();
-        let dir = crate::paths::exe_dir();
+        let stem = crate::paths::exe_stem().unwrap_or_else(|_| "unknown".to_string());
+        let dir = crate::paths::exe_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
         let bt = std::backtrace::Backtrace::capture();
         let report = format!(
             "=== CRASH ===\nTime: {}\nPanic: {}\n\nBacktrace:\n{:?}\n",
@@ -270,7 +270,9 @@ mod tests {
     #[test]
     fn test_init_panic_hook_writes_crash_file() {
         let crash_path =
-            crate::paths::exe_dir().join(format!("{}.crash", crate::paths::exe_stem()));
+            crate::paths::exe_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from("."))
+            .join(format!("{}.crash", crate::paths::exe_stem().unwrap_or_else(|_| "unknown".to_string())));
         let _ = std::fs::remove_file(&crash_path);
 
         with_log_lock(|| {

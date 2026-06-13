@@ -10,8 +10,8 @@ pub fn generate_salt() -> Zeroizing<[u8; 16]> {
     salt
 }
 
-pub fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
-    let mut key = [0u8; 32];
+pub fn derive_key(password: &str, salt: &[u8]) -> Result<Zeroizing<[u8; 32]>, String> {
+    let mut key = Zeroizing::new([0u8; 32]);
     // Pad PIN to constant length to prevent PIN-length timing leakage
     let mut padded = password.as_bytes().to_vec();
     padded.resize(128, 0u8);
@@ -19,7 +19,7 @@ pub fn derive_key(password: &str, salt: &[u8]) -> Result<[u8; 32], String> {
     let params = argon2::Params::new(19_456, 2, 1, Some(32))
         .map_err(|e| format!("argon2 params failed: {e}"))?;
     let argon2 = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
-    let result = argon2.hash_password_into(&padded, salt, &mut key);
+    let result = argon2.hash_password_into(&padded, salt, &mut *key);
     // Zeroize the padded buffer immediately
     padded.zeroize();
     result.map_err(|e| format!("key derivation failed: {e}"))?;

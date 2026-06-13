@@ -146,8 +146,10 @@ impl AppState {
             .map_err(|e| format!("lock error: {e}"))?;
         if let Some((ref data, cached_at)) = *cache {
             // Check if file has been modified externally (import_backup, etc.)
-            if let Ok(modified) =
-                std::fs::metadata(crate::paths::auth_path()).and_then(|m| m.modified())
+            if let Some(modified) = crate::paths::auth_path()
+                .ok()
+                .and_then(|p| std::fs::metadata(p).ok())
+                .and_then(|m| m.modified().ok())
             {
                 if let Some(ct) = cached_at {
                     if modified > ct {
@@ -165,8 +167,9 @@ impl AppState {
     /// Read from disk, populate cache, return data.
     fn reload_from_disk(&self) -> Result<crate::storage::AuthData, String> {
         let data = crate::storage::try_load()?;
-        let mtime = std::fs::metadata(crate::paths::auth_path())
+        let mtime = crate::paths::auth_path()
             .ok()
+            .and_then(|p| std::fs::metadata(p).ok())
             .and_then(|m| m.modified().ok());
         let mut cache = self
             .cached_data
@@ -216,7 +219,7 @@ unsafe fn windows_virtual_unlock(ptr: *const std::ffi::c_void, size: usize) -> b
 
 #[tauri::command]
 fn get_app_name() -> String {
-    crate::paths::exe_stem()
+    crate::paths::exe_stem().unwrap_or_else(|_| "tauri-authenticator".to_string())
 }
 
 #[tauri::command]
@@ -294,7 +297,8 @@ pub fn run() {
         .setup(|app| {
             let data = crate::storage::load();
             let cfg = data.config;
-            let exe_name = crate::paths::exe_stem();
+            let exe_name = crate::paths::exe_stem()
+                .unwrap_or_else(|_| "tauri-authenticator".to_string());
 
             if let Some(window) = app.get_webview_window("main") {
                 if crate::storage::exists() {
@@ -363,13 +367,13 @@ mod tests {
             let mut data = crate::storage::try_load().unwrap();
             data.accounts = crate::storage::encrypt_accounts(&accounts, &key).unwrap();
             data.config.password_protected = true;
-            data.config.password_salt = "deadbeef".into();
+            data.config.password_salt = Zeroizing::new("deadbeef".into());
             crate::storage::save(&data).unwrap();
 
             // Attempt to save a config that has password_protected=false (like frontend might send)
             let cfg = crate::config::Config {
                 password_protected: false,
-                password_salt: String::new(),
+                password_salt: Zeroizing::new(String::new()),
                 ..crate::config::Config::default()
             };
             save_config_impl(cfg, &state).unwrap();
@@ -381,7 +385,7 @@ mod tests {
                 "password_protected must be preserved by save_config"
             );
             assert_eq!(
-                loaded.config.password_salt, "deadbeef",
+                *loaded.config.password_salt, "deadbeef",
                 "password_salt must be preserved by save_config"
             );
             cleanup_auth_file();
@@ -424,7 +428,7 @@ mod tests {
         with_fs_lock(|| {
             cleanup_auth_file();
             let state = test_app_state();
-            std::fs::write(crate::paths::auth_path(), "{{not valid json at all![[[").unwrap();
+            std::fs::write(crate::paths::auth_path().unwrap(), "{{not valid json at all![[[").unwrap();
 
             // load_config calls try_load() which fails on parse error
             let result = load_config_impl(&state);
@@ -469,7 +473,7 @@ mod tests {
     #[test]
     fn test_get_app_name_returns_exe_stem() {
         let name = get_app_name();
-        let stem = crate::paths::exe_stem();
+        let stem = crate::paths::exe_stem().unwrap_or_else(|_| "unknown".to_string());
         assert_eq!(name, stem, "get_app_name must return the exe stem");
     }
 
@@ -491,11 +495,11 @@ mod tests {
             data.config = cfg.clone();
             // Preserve password metadata (save_config requirement)
             data.config.password_protected = false;
-            data.config.password_salt = String::new();
+            data.config.password_salt = Zeroizing::new(String::new());
             crate::storage::save(&data).unwrap();
 
             // Verify the file was created
-            assert!(crate::paths::auth_path().exists());
+            assert!(crate::paths::auth_path().unwrap().exists());
             let loaded = crate::storage::try_load().unwrap();
             assert_eq!(loaded.config.theme, "light");
             assert_eq!(loaded.config.width, 500);

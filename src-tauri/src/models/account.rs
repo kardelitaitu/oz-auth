@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use zeroize::Zeroizing;
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Account {
     pub id: String,     // UUID v4
@@ -11,7 +12,7 @@ pub struct Account {
     pub digits: u8, // 6 or 8
     #[serde(default = "default_period")]
     pub period: u32, // 30 (seconds)
-    pub secret: Vec<u8>, // Raw secret key bytes
+    pub secret: Zeroizing<Vec<u8>>, // Raw secret key bytes, auto-zeroized on drop
     #[serde(default)]
     pub sort_order: u32,
     #[serde(default = "default_created_at")]
@@ -92,7 +93,7 @@ mod tests {
             algorithm: Algorithm::SHA1,
             digits: 6,
             period: 30,
-            secret: vec![1, 2, 3, 4, 5],
+            secret: Zeroizing::new(vec![1, 2, 3, 4, 5]),
             sort_order: 0,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
@@ -118,7 +119,7 @@ mod tests {
                 algorithm: algo.clone(),
                 digits: 6,
                 period: 30,
-                secret: vec![],
+                secret: Zeroizing::new(vec![]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -199,7 +200,7 @@ mod tests {
             algorithm: Algorithm::SHA256,
             digits: 8,
             period: 60,
-            secret: vec![10, 20, 30],
+            secret: Zeroizing::new(vec![10, 20, 30]),
             sort_order: 3,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),

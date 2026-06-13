@@ -5,8 +5,7 @@ pub(crate) fn test_app_state() -> crate::AppState {
 
 #[cfg(test)]
 pub(crate) fn cleanup_auth_file() {
-    let path = crate::paths::auth_path();
-    if path.exists() {
+    if let Ok(path) = crate::paths::auth_path() {
         let _ = std::fs::remove_file(&path);
     }
 }

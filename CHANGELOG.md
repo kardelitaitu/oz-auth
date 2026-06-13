@@ -2,33 +2,20 @@
 
 All notable changes to oz-auth.
 
-## [0.1.1] — Unreleased
+## [0.1.6] — 2026-06-14
 
 ### Added
-- **QR Code on right-click** — generate a QR code from any account for easy import on another device
-- **Backup all keys** — export all account secrets as `otpauth://` URIs to a `.txt` file from Settings (with ⚠ plaintext warning)
-- **Search icon** — magnifying glass inside the search box with focus highlight
-- **New pin icon** — replaced outlined pin with a filled thumbtack SVG in the titlebar
-- **Titlebar icon animation** — pin, minimize, and close buttons now wiggle on hover (matching toolbar icons)
-- **Rounded search box** — softer `8px` border-radius and `"Search . . ."` placeholder
+- **PIN strength indicator** — visual strength bar (Weak/Medium/Strong/Very Strong) below the New PIN input in settings, updates live as you type, no minimum enforced
 
-### Fixed
-- **PIN change key zeroization order** — `change_pin_impl` was zeroing the new key before storing it in app state, breaking the app after a PIN change
-- **TOTP period=0 division-by-zero** — `make_totp()` panics when account period is 0; now validated and rejected
-- **Silent data loss on lock** — `set_lock_impl` used `unwrap_or_default()` on malformed JSON, wiping accounts during PIN setup; now returns an explicit error
-- **Clipboard auto-clear fires immediately** — when auto-clear timeout was set to 0, `setTimeout(..., 0)` wiped the code instantly; now only clears when timeout > 0
-- **Settings save race condition** — shared debounce timer across inputs meant rapid changes cancelled earlier saves; now uses per-field timers
-- **Account IDs not HTML-escaped** — raw account IDs injected into HTML `data-id` attributes; now escaped via `escapeHtml()`
-- **`parse_uri` accepted hotp URIs** — `otpauth://hotp/...` URIs were silently accepted instead of rejected; now only `totp` type is accepted
-- **Truncation test race condition** — `test_flush_truncates_at_1000` used hardcoded seq numbers that broke under test parallelism; now uses relative assertions
+### Changed
+- **`settings.js` refactored** — replaced all `innerHTML` string templates with pure DOM APIs (`createElement`, `textContent`, `appendChild`); removed `esc()` helper (no longer needed)
+- **`accounts.js` refactored** — replaced `innerHTML` card builder with DOM APIs including proper SVG namespace (`createElementNS`); empty state uses DOM methods
+- **`paths.rs` hardened** — converted 4 `.expect()` calls to `Result` returns; all callers handle errors gracefully instead of panicking on `current_exe()` failure
 
 ### Testing
-- **476 tests** across all Rust modules and JS frontend
-- Proptest 1.11 compatibility fixes (`with_lock` generic return, `prop_assert!` returns `Result`)
-- 100-account stress tests, search edge cases, PIN lifecycle, crypto boundary tests
-- Algorithm × digit matrix, period boundary timing, encrypted store operations
-- Config migration, type validation, tray pie-icon edge cases
-- JS unit tests: accounts, clipboard, dragdrop, lock, main, settings, totp
+- **485 Rust tests** passing, **104 JS tests** passing
+- PIN strength indicator tested via settings test suite
+- All frontend tests validate DOM structure via `textContent` / `children` (no `innerHTML` assertions)
 
 ## [0.1.0] — 2026-06-13
 

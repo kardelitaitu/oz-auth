@@ -12,7 +12,7 @@ use crate::models::account::{Account, Algorithm};
 use crate::storage::{encrypt_accounts, load_accounts, save, AuthData};
 use crate::AppState;
 use base32::Alphabet;
-use zeroize::Zeroize;
+use zeroize::{Zeroize, Zeroizing};
 
 // ── Shared helpers ───────────────────────────────────────────
 
@@ -263,7 +263,7 @@ mod tests {
                 algorithm: Algorithm::SHA1,
                 digits: 6,
                 period: 30,
-                secret: vec![1, 2, 3],
+                secret: Zeroizing::new(vec![1, 2, 3]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -297,7 +297,7 @@ mod tests {
                 algorithm: Algorithm::SHA256,
                 digits: 8,
                 period: 60,
-                secret: vec![9, 8, 7],
+                secret: Zeroizing::new(vec![9, 8, 7]),
                 sort_order: 0,
                 created_at: chrono::Utc::now(),
                 updated_at: chrono::Utc::now(),
@@ -340,7 +340,7 @@ mod tests {
             algorithm: Algorithm::SHA1,
             digits: 6,
             period: 30,
-            secret: vec![1, 2, 3, 4],
+            secret: Zeroizing::new(vec![1, 2, 3, 4]),
             sort_order: 0,
             created_at: chrono::Utc::now(),
             updated_at: chrono::Utc::now(),
