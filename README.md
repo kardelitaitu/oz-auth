@@ -54,9 +54,9 @@ Most authenticator apps are mobile-only, closed-source, or require cloud sync. o
 
 <img src="https://img.shields.io/badge/For_End_User-white?style=for-the-badge&logoWidth=1"/>
 
-Download `oz-auth.exe` from [Releases](https://github.com/kardelitaitu/oz-auth/releases). Place them in the same folder (eg: 'My Documents'). Run. That's it. (it will generate the .auth file after do any changes)  
-For multiple notes. You can copy the .exe and rename it.  
-Then you can put the shortcut on 'C:\Users\YOUR_USERNAME\AppData\Roaming\Microsoft\Windows\Start Menu' if needed, so you can call it from start menu search.
+- Download `oz-auth.exe` from [Releases](https://github.com/kardelitaitu/oz-auth/releases). Place them in the same folder (eg: 'My Documents'). Run. That's it. (it will generate the .auth file after do any changes)  
+- For multiple notes. You can copy the .exe and rename it.  
+- Then you can put the shortcut on 'C:\Users\YOUR_USERNAME\AppData\Roaming\Microsoft\Windows\Start Menu' if needed, so you can call it from start menu search.
 
 <img src="https://img.shields.io/badge/For_Developers-white?style=for-the-badge&logoWidth=1"/>
 
@@ -93,7 +93,7 @@ The output is at `src-tauri/target/release/oz-auth.exe`.
 |---------|-------------|
 | `cargo tauri dev` | Dev mode with hot-reload |
 | `npm run tauri` | Full production build |
-| `cargo test` | Run 476 Rust tests |
+| `cargo test` | Run 480 Rust tests |
 | `npx vitest run` | Run 104 frontend tests |
 | `cargo clippy -- -D warnings` | Lint (strict) |
 | `cargo fmt --check` | Check formatting |
