@@ -165,6 +165,11 @@ fn update_tray_icon(pct: f64, app: tauri::AppHandle) {
 }
 
 #[tauri::command]
+fn get_audit_log() -> Vec<crate::audit::AuditEntry> {
+    crate::audit::snapshot()
+}
+
+#[tauri::command]
 fn save_config(cfg: crate::config::Config) -> Result<(), String> {
     let mut data = crate::storage::try_load()?;
     let mut merged = cfg;
@@ -174,7 +179,9 @@ fn save_config(cfg: crate::config::Config) -> Result<(), String> {
     merged.password_salt = data.config.password_salt.clone();
 
     data.config = merged;
-    crate::storage::flush_and_save(&mut data)
+    crate::storage::flush_and_save(&mut data)?;
+    crate::diagnostics::event("config", "settings updated");
+    Ok(())
 }
 
 // ── App entry ────────────────────────────────────────────────
@@ -189,6 +196,10 @@ pub fn run() {
         crate::diagnostics::restore_from_log_str(&data.log);
         crate::audit::restore(&data.audit_trail);
     }
+
+    // Push startup AFTER restore so the event survives in the audit trail
+    // (diagnostics::init() only sets up the panic hook — the event is pushed here)
+    crate::diagnostics::event("startup", "Application started");
 
     tauri::Builder::default()
         .manage(AppState {
@@ -229,6 +240,7 @@ pub fn run() {
             load_config,
             save_config,
             update_tray_icon,
+            get_audit_log,
             commands::totp::generate_code,
             commands::totp::generate_all_codes,
             commands::accounts::crud::add_account,

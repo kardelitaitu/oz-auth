@@ -112,6 +112,28 @@ export function openSettings(config) {
       </div>
     `;
 
+    // ── Audit Log section ────────────────────────────
+    // Intentionally not escaped — no user-controlled strings in the HTML template
+    html += `
+      <div class="settings-section">
+        <div class="settings-row">
+          <span class="settings-row-label">Audit Log</span>
+          <button class="settings-btn-small" id="audit-log-toggle">Show</button>
+        </div>
+        <div class="audit-log-container hidden" id="audit-log-container">
+          <div class="audit-log-status" id="audit-log-status">Loading...</div>
+          <div class="audit-log-table-wrap">
+            <table class="audit-log-table">
+              <thead>
+                <tr><th>#</th><th>Time</th><th>Event</th><th>Details</th></tr>
+              </thead>
+              <tbody id="audit-log-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    `;
+
     // Interpolated values are safe (numbers, backend-controlled strings),
     // but escape any string fields for defense-in-depth.
     const esc = (s) => String(s).replace(/[&<>"']/g, (c) =>
@@ -125,6 +147,53 @@ export function openSettings(config) {
     `;
 
     settingsBody.innerHTML = html;
+
+    // ── Audit log toggle ──────────────────────────────
+    const auditToggle = document.getElementById("audit-log-toggle");
+    const auditContainer = document.getElementById("audit-log-container");
+    const auditBody = document.getElementById("audit-log-body");
+    const auditStatus = document.getElementById("audit-log-status");
+    let auditLoaded = false;
+
+    if (auditToggle) {
+      auditToggle.addEventListener("click", async () => {
+        const isHidden = auditContainer.classList.contains("hidden");
+        if (isHidden) {
+          auditContainer.classList.remove("hidden");
+          auditToggle.textContent = "Hide";
+          if (!auditLoaded) {
+            try {
+              const entries = await invoke("get_audit_log");
+              auditLoaded = true;
+              if (!entries || entries.length === 0) {
+                auditStatus.textContent = "No audit entries yet.";
+                return;
+              }
+              auditStatus.textContent = `${entries.length} entries (verified on load)`;
+              auditBody.innerHTML = entries.map((e) => {
+                const dt = new Date(e.ts * 1000);
+                // Format as YYYY-MM-DD HH:MM:SS
+                const pad = (n) => String(n).padStart(2, "0");
+                const dateStr = `${dt.getFullYear()}-${pad(dt.getMonth()+1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+                const catClass = `audit-cat audit-cat-${e.cat.replace(/[^a-z0-9]/g, "-")}`;
+                return `<tr>
+                  <td class="audit-seq">${e.seq}</td>
+                  <td class="audit-ts">${esc(dateStr)}</td>
+                  <td><span class="${catClass}">${esc(e.cat)}</span></td>
+                  <td class="audit-msg">${esc(e.msg)}</td>
+                </tr>`;
+              }).join("");
+            } catch (err) {
+              auditStatus.textContent = "Failed to load audit log.";
+              auditBody.innerHTML = `<tr><td colspan="4" style="color:var(--close-bg);text-align:center;padding:12px;">Error: ${esc(typeof err === "string" ? err : "Unknown error")}</td></tr>`;
+            }
+          }
+        } else {
+          auditContainer.classList.add("hidden");
+          auditToggle.textContent = "Show";
+        }
+      });
+    }
     const pinError = document.getElementById("pin-error");
 
     // Enter key on PIN inputs triggers the Set/Change button

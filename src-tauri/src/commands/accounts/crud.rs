@@ -193,6 +193,7 @@ fn update_account_impl(
     save(&data)?;
 
     zeroize_accounts(&mut accounts);
+    crate::diagnostics::event("account", &format!("updated {account_id}"));
 
     Ok(result)
 }

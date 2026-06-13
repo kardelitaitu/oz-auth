@@ -29,7 +29,6 @@ pub fn init() {
         prev(info);
     }));
 
-    event("startup", "Application started");
 }
 
 /// Append a major event to the in-memory log buffer and audit trail.
@@ -96,9 +95,20 @@ mod tests {
     }
 
     #[test]
-    fn test_init_writes_startup_event() {
+    fn test_init_sets_up_panic_hook() {
+        // Verify init() sets up the crash handler without writing a startup event
+        // (the startup event is now pushed in lib.rs::run() after audit::restore())
         with_log_lock(|| {
             init();
+            let log = flush_to_log_str();
+            assert!(log.is_empty(), "init() should no longer push a startup event");
+        });
+    }
+
+    #[test]
+    fn test_startup_event_from_run() {
+        with_log_lock(|| {
+            event("startup", "Application started");
             let log = flush_to_log_str();
             assert!(log.contains("startup"));
             assert!(log.contains("Application started"));
