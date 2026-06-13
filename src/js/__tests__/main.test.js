@@ -273,6 +273,10 @@ describe("main.js integration", () => {
     expect(document.body.className).toBe("theme-dark");
 
     btnTheme.click();
+    // updateConfig loads config first (async), then mutates, then debounces save at 300ms
+    await new Promise(process.nextTick);
+    await new Promise(process.nextTick);
+    vi.advanceTimersByTime(300);
     await new Promise(process.nextTick);
 
     const saveCall = (callLog.save_config?.args || []).find(
@@ -289,6 +293,10 @@ describe("main.js integration", () => {
     const btnPin = document.getElementById("btn-pin");
 
     btnPin.click();
+    // updateConfig loads config first (async), then mutates, then debounces save at 300ms
+    await new Promise(process.nextTick);
+    await new Promise(process.nextTick);
+    vi.advanceTimersByTime(300);
     await new Promise(process.nextTick);
 
     const saveCall = (callLog.save_config?.args || []).find(

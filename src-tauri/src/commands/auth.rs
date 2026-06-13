@@ -189,6 +189,30 @@ pub fn export_backup(path: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Verify a PIN without setting the encryption key (read-only check).
+/// Used by the backup flow to validate the PIN before exporting.
+fn verify_pin_impl(pin: &str, state: &AppState) -> Result<bool, String> {
+    let data = state.load_data()?;
+    if !data.config.password_protected {
+        return Err("PIN is not set".to_string());
+    }
+
+    let mut salt = Zeroizing::new(
+        hex::decode(&data.config.password_salt).map_err(|e| format!("invalid salt: {e}"))?,
+    );
+    let mut key = crate::crypto::derive_key(pin, &salt)?;
+
+    let result = decrypt_accounts(&data.accounts, &key).is_ok();
+    key.zeroize();
+    salt.zeroize();
+    Ok(result)
+}
+
+#[tauri::command]
+pub fn verify_pin(pin: String, state: State<'_, AppState>) -> Result<bool, String> {
+    verify_pin_impl(&pin, &state)
+}
+
 fn import_backup_impl(path: &str, state: &AppState) -> Result<(), String> {
     let raw = std::fs::read_to_string(path).map_err(|e| format!("failed to read backup: {e}"))?;
     let _backup: crate::storage::auth_file::AuthData =
@@ -2003,6 +2027,62 @@ mod tests {
             // Unlock again
             unlock_impl("mypin", &state).unwrap();
             assert!(!is_locked_impl(&state).unwrap());
+            cleanup_auth_file();
+        });
+    }
+
+    // ── verify_pin tests ────────────────────────────────────
+
+    #[test]
+    fn test_verify_pin_correct_returns_true() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let _key = seed_encrypted_auth();
+            let result = verify_pin_impl("mypin", &state).unwrap();
+            assert!(result, "correct PIN must return true");
+            // Must NOT set the key in state
+            assert!(!state.has_key(), "verify_pin must not set key");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_verify_pin_wrong_returns_false() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let _key = seed_encrypted_auth();
+            let result = verify_pin_impl("wrongpin", &state).unwrap();
+            assert!(!result, "wrong PIN must return false");
+            assert!(!state.has_key(), "verify_pin must not set key on failure");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_verify_pin_when_not_protected_fails() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let mut data = crate::storage::try_load().unwrap();
+            data.accounts.data_json = "[]".into();
+            data.config.password_protected = false;
+            crate::storage::save(&data).unwrap();
+            let err = verify_pin_impl("anypin", &state).unwrap_err();
+            assert!(err.contains("not set"), "error: {err}");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_verify_pin_empty_pin_returns_false() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            let _key = seed_encrypted_auth();
+            let result = verify_pin_impl("", &state).unwrap();
+            assert!(!result, "empty PIN must return false (not panic)");
             cleanup_auth_file();
         });
     }

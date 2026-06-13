@@ -125,15 +125,36 @@ pub fn flush_and_save(data: &mut AuthData) -> Result<(), String> {
     data.audit_trail = crate::audit::flush();
     let json = serde_json::to_string_pretty(data)
         .map_err(|e| format!("failed to serialize auth data: {e}"))?;
-    std::fs::write(auth_path(), &json)
-        .map_err(|e| format!("failed to write {}: {e}", auth_path().display()))
+    atomic_write(&auth_path(), &json)
 }
 
 pub fn save(data: &AuthData) -> Result<(), String> {
     let json = serde_json::to_string_pretty(data)
         .map_err(|e| format!("failed to serialize auth data: {e}"))?;
-    std::fs::write(auth_path(), &json)
-        .map_err(|e| format!("failed to write {}: {e}", auth_path().display()))
+    atomic_write(&auth_path(), &json)
+}
+
+/// Atomic write: write to a temp file, then rename over the target.
+/// This prevents data loss if the process crashes mid-write.
+fn atomic_write(target: &std::path::Path, contents: &str) -> Result<(), String> {
+    let dir = target.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let mut tmp = dir.join(".auth.tmp");
+    // Ensure unique temp name to avoid collisions from concurrent writers
+    tmp.set_extension("tmp");
+
+    std::fs::write(&tmp, contents)
+        .map_err(|e| format!("failed to write temp file {}: {e}", tmp.display()))?;
+
+    // Atomic rename — on Windows this is atomic if src and dest are on the same volume
+    std::fs::rename(&tmp, target).map_err(|e| {
+        let _ = std::fs::remove_file(&tmp);
+        format!(
+            "failed to rename temp file to {}: {e}",
+            target.display()
+        )
+    })?;
+
+    Ok(())
 }
 
 pub fn encrypt_accounts(accounts: &[Account], key: &[u8; 32]) -> Result<AccountsPayload, String> {

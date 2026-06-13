@@ -1,6 +1,6 @@
 {
   "productName": "oz-auth",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "identifier": "com.oz-auth",
   "build": {
     "frontendDist": "../dist",
@@ -24,7 +24,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://tauri.localhost http://localhost:1420 ws://localhost:1420;"
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self' https://tauri.localhost; frame-src 'none'; object-src 'none';"
     }
   },
   "bundle": {

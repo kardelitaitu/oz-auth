@@ -63,6 +63,36 @@ let lockOnFocusLoss = false;
 let appName = "oz-auth";
 let appVersion = "0.1.0";
 
+// ── Config save queue (prevents race conditions) ──────────
+let pendingConfig = null;
+let configSaveTimer = null;
+
+function saveConfigBatch() {
+  if (!pendingConfig) return;
+  if (configSaveTimer) clearTimeout(configSaveTimer);
+  configSaveTimer = setTimeout(async () => {
+    const cfg = pendingConfig;
+    pendingConfig = null;
+    try {
+      await invoke("save_config", { cfg });
+    } catch (_) {}
+  }, 300);
+}
+
+function updateConfig(mutator) {
+  if (!pendingConfig) {
+    // Load current config on first mutation
+    invoke("load_config").then((cfg) => {
+      pendingConfig = cfg;
+      mutator(pendingConfig);
+      saveConfigBatch();
+    }).catch(() => {});
+  } else {
+    mutator(pendingConfig);
+    saveConfigBatch();
+  }
+}
+
 // ── Tray icon update helper ────────────────────────────────
 function updateTrayIcon(pct) {
   invoke("update_tray_icon", { pct }).catch(() => {});
@@ -77,7 +107,7 @@ function toast(msg, isError = false) {
 }
 
 // ── Clipboard ──────────────────────────────────────────────
-const clipboard = createClipboardManager(toast, clipboardClearSeconds);
+const clipboard = createClipboardManager(toast, clipboardClearSeconds, invoke);
 
 // ── Account operations ─────────────────────────────────────
 async function loadAccounts(query = "") {
@@ -333,11 +363,11 @@ function detectSystemTheme() {
 }
 
 btnTheme.addEventListener("click", async () => {
-  const cfg = await invoke("load_config");
-  cfg.theme = cfg.theme === "light" ? "dark" : "light";
-  await invoke("save_config", { cfg });
-  applyTheme(cfg.theme);
-  toast(cfg.theme === "light" ? "Light theme" : "Dark theme");
+  updateConfig((cfg) => {
+    cfg.theme = cfg.theme === "light" ? "dark" : "light";
+    applyTheme(cfg.theme);
+    toast(cfg.theme === "light" ? "Light theme" : "Dark theme");
+  });
 });
 
 // ── Settings ───────────────────────────────────────────────
@@ -400,12 +430,13 @@ btnMin.addEventListener("click", async () => {
 
 btnPin.addEventListener("click", async () => {
   const { getCurrentWindow } = await import("@tauri-apps/api/window");
-  const cfg = await invoke("load_config");
-  cfg.always_on_top = !cfg.always_on_top;
-  await invoke("save_config", { cfg });
-  await getCurrentWindow().setAlwaysOnTop(cfg.always_on_top);
-  btnPin.classList.toggle("active", cfg.always_on_top);
-  toast(cfg.always_on_top ? "Always on top" : "Not on top");
+  const win = getCurrentWindow();
+  updateConfig((cfg) => {
+    cfg.always_on_top = !cfg.always_on_top;
+    win.setAlwaysOnTop(cfg.always_on_top);
+    btnPin.classList.toggle("active", cfg.always_on_top);
+    toast(cfg.always_on_top ? "Always on top" : "Not on top");
+  });
 });
 
 // ── Window tracking ────────────────────────────────────────
@@ -417,11 +448,11 @@ async function trackWindow() {
   await win.onResized(async () => {
     const size = await win.outerSize();
     clearTimeout(resizeTimer);
-    resizeTimer = setTimeout(async () => {
-      const cfg = await invoke("load_config");
-      cfg.width = size.width;
-      cfg.height = size.height;
-      await invoke("save_config", { cfg });
+    resizeTimer = setTimeout(() => {
+      updateConfig((cfg) => {
+        cfg.width = size.width;
+        cfg.height = size.height;
+      });
     }, 500);
   });
 
@@ -430,11 +461,11 @@ async function trackWindow() {
     const pos = await win.outerPosition();
     if (pos.x < 0 || pos.y < 0) return;
     clearTimeout(moveTimer);
-    moveTimer = setTimeout(async () => {
-      const cfg = await invoke("load_config");
-      cfg.left = pos.x;
-      cfg.top = pos.y;
-      await invoke("save_config", { cfg });
+    moveTimer = setTimeout(() => {
+      updateConfig((cfg) => {
+        cfg.left = pos.x;
+        cfg.top = pos.y;
+      });
     }, 500);
   });
 }
@@ -512,8 +543,14 @@ document.addEventListener("keydown", async (e) => {
 
     window.addEventListener("beforeunload", async () => {
       try {
-        const cfg = await invoke("load_config");
-        await invoke("save_config", { cfg });
+        if (configSaveTimer) {
+          clearTimeout(configSaveTimer);
+          configSaveTimer = null;
+        }
+        if (pendingConfig) {
+          await invoke("save_config", { cfg: pendingConfig });
+          pendingConfig = null;
+        }
       } catch (_) {}
     });
 

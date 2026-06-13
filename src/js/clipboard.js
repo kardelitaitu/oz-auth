@@ -19,15 +19,14 @@ async function clearClipboard() {
  * Create a clipboard manager that auto-clears copied codes after `clearSeconds`.
  * Returns { copy, clear, setClearSeconds, clearOnLock }.
  */
-export function createClipboardManager(toastFn, clearSeconds = 30) {
+export function createClipboardManager(toastFn, clearSeconds = 30, invokeFn) {
   let clipboardTimer = null;
   let timeout = clearSeconds;
 
   async function copyCode(id) {
-    const el = document.querySelector(`.card-code[data-id="${id}"]`);
-    if (!el) return;
-    const code = el.textContent.replace(/\s/g, "");
     try {
+      const result = await invokeFn("generate_code", { accountId: id });
+      const code = result[0];
       await navigator.clipboard.writeText(code);
       if (timeout > 0) {
         toastFn("Code copied — auto-clears in " + timeout + "s");

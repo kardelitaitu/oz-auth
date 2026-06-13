@@ -1,5 +1,5 @@
 use crate::models::account::Account;
-use crate::storage::{load_accounts, try_load};
+use crate::storage::load_accounts;
 use crate::AppState;
 use tauri::State;
 use zeroize::Zeroize;
@@ -49,7 +49,7 @@ fn current_timestamp() -> u64 {
 
 /// Core logic for generate_code — takes &AppState so it's testable without Tauri.
 fn generate_code_impl(account_id: &str, state: &AppState) -> Result<(String, u32), String> {
-    let data = try_load()?;
+    let data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;
@@ -87,7 +87,7 @@ pub fn generate_code(
 
 /// Core logic for generate_all_codes — takes &AppState so it's testable without Tauri.
 fn generate_all_codes_impl(state: &AppState) -> Result<Vec<(String, String, u32)>, String> {
-    let data = try_load()?;
+    let data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;
@@ -428,7 +428,7 @@ mod tests {
             let (code1, _) = generate_code_impl("test-1", &state).unwrap();
             let (code2, remaining2) = generate_code_impl("test-1", &state).unwrap();
             assert_eq!(code1, code2, "same counter window → same code");
-            assert!(remaining2 < 30);
+            assert!(remaining2 > 0 && remaining2 <= 30);
             cleanup_auth_file();
         });
     }

@@ -340,6 +340,7 @@ pub fn run() {
             commands::auth::change_pin,
             commands::auth::export_backup,
             commands::auth::import_backup,
+            commands::auth::verify_pin,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
