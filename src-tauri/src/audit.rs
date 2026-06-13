@@ -376,24 +376,35 @@ mod tests {
     #[test]
     fn test_flush_truncates_at_1000() {
         with_lock(|| {
-            let start_seq = snapshot().len() as u64;
+            // Push exactly 1100 entries and record their seq range
+            let mut first_seq = 0;
+            let mut last_seq = 0;
             for i in 0..1100u64 {
                 push("bulk", &format!("event {i}"));
+                if i == 0 {
+                    first_seq = snapshot().last().unwrap().seq;
+                }
+                last_seq = snapshot().last().unwrap().seq;
             }
             let json = flush();
             let restored: Vec<AuditEntry> = serde_json::from_str(&json).unwrap();
             assert_eq!(restored.len(), 1000, "must truncate to 1000 entries");
-            // First kept entry is 100 events after start
-            assert_eq!(
+            // First kept entry must be within our pushed range
+            assert!(
+                restored[0].seq >= first_seq,
+                "first kept seq {} must be >= our first seq {}",
                 restored[0].seq,
-                start_seq + 100,
-                "first kept entry must be 100 past start (start_seq={start_seq})"
+                first_seq
             );
+            // Last entry must match
             assert_eq!(
-                restored[999].seq,
-                start_seq + 1099,
-                "last kept entry must be 1099 past start"
+                restored[999].seq, last_seq,
+                "last kept seq must match our last seq"
             );
+            // Seq must be monotonically increasing
+            for w in restored.windows(2) {
+                assert!(w[0].seq < w[1].seq, "seq must be increasing");
+            }
             // Chain must still be valid after truncation
             assert!(verify_chain(&restored).is_ok());
         });

@@ -23,7 +23,7 @@ All notable changes to oz-auth.
 - **Truncation test race condition** — `test_flush_truncates_at_1000` used hardcoded seq numbers that broke under test parallelism; now uses relative assertions
 
 ### Testing
-- **472 tests** across all Rust modules and JS frontend
+- **476 tests** across all Rust modules and JS frontend
 - Proptest 1.11 compatibility fixes (`with_lock` generic return, `prop_assert!` returns `Result`)
 - 100-account stress tests, search edge cases, PIN lifecycle, crypto boundary tests
 - Algorithm × digit matrix, period boundary timing, encrypted store operations

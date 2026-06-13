@@ -33,7 +33,8 @@ cargo tauri dev
 npm run build                         # Frontend build
 cd src-tauri && cargo fmt --check     # Rust formatting
 cargo clippy -- -D warnings           # Rust linting
-cargo test                            # Rust tests (116+)
+$env:RUSTFLAGS="-C target-feature=+crt-static"; cargo test   # Rust tests (476+)
+npx vitest run                        # Frontend tests (104)
 cargo audit                           # Dependency vulnerability scan
 cargo deny check                      # License & duplicate check
 ```
@@ -108,7 +109,15 @@ tauri-authenticator/
 │   │   ├── lock.js             # Lock screen, PIN entry
 │   │   ├── settings.js         # Settings dialog
 │   │   ├── clipboard.js        # Auto-clear clipboard
-│   │   └── dragdrop.js         # Drag-and-drop reorder
+│   │   ├── dragdrop.js         # Drag-and-drop reorder
+│   │   └── __tests__/          # Vitest frontend tests (104 tests)
+│   │       ├── accounts.test.js
+│   │       ├── clipboard.test.js
+│   │       ├── dragdrop.test.js
+│   │       ├── lock.test.js
+│   │       ├── main.test.js
+│   │       ├── settings.test.js
+│   │       └── totp.test.js
 │   └── styles/
 │       ├── main.css            # Global styles, titlebar, cards
 │       └── themes.css          # Dark/light CSS variables
@@ -117,9 +126,14 @@ tauri-authenticator/
 │   │   ├── main.rs             # Entry, process mitigation
 │   │   ├── lib.rs              # App builder, AppState, IPC registry
 │   │   ├── crypto.rs           # Argon2id + AES-256-GCM
+│   │   ├── audit.rs            # Signed audit trail with hash chain
+│   │   ├── test_utils.rs       # Shared test helpers (test_app_state, etc.)
 │   │   ├── commands/
 │   │   │   ├── auth.rs         # Lock/unlock, PIN, backup
-│   │   │   ├── accounts.rs     # CRUD operations
+│   │   │   ├── accounts.rs     # decode_secret, shared test infra
+│   │   │   ├── accounts/
+│   │   │   │   ├── crud.rs     # Add, edit, delete accounts
+│   │   │   │   └── qr.rs       # QR code + backup URI generation
 │   │   │   └── totp.rs         # TOTP code generation
 │   │   ├── storage/
 │   │   │   └── auth_file.rs    # .auth file read/write + encrypt
@@ -200,37 +214,54 @@ Use the `security:` prefix for security-relevant changes (zeroization, timing fi
 ### Rust Tests
 
 ```bash
-# Run all tests
-cd src-tauri && cargo test
+# Run all tests (Windows — static CRT required for test binaries)
+cd src-tauri && $env:RUSTFLAGS="-C target-feature=+crt-static"; cargo test
 
 # Run library tests (excludes integration tests)
-cd src-tauri && cargo test --lib
+cd src-tauri && $env:RUSTFLAGS="-C target-feature=+crt-static"; cargo test --lib
 
 # Run a specific test
-cd src-tauri && cargo test test_name
+cd src-tauri && $env:RUSTFLAGS="-C target-feature=+crt-static"; cargo test test_name
 ```
 
-The project has **116+ tests** covering:
+The project has **476+ tests** covering:
 
-- **Cryptography**: AES-256-GCM encrypt/decrypt roundtrips, Argon2id key derivation
-- **Authentication**: PIN set/unlock/change flows, backup/restore
-- **Account CRUD**: Add, edit, delete accounts with encrypted storage
-- **URI parsing**: `otpauth://` URI parsing with various edge cases
-- **TOTP generation**: Code generation with SHA-1/256/512, 6/8 digit codes
+- **Cryptography**: AES-256-GCM encrypt/decrypt roundtrips, Argon2id key derivation, salt rotation
+- **Authentication**: PIN set/unlock/change flows, backup/restore, rate-limiting
+- **Account CRUD**: Add, edit, delete accounts with encrypted and plaintext storage
+- **URI parsing**: `otpauth://` URI parsing with hotp rejection, edge cases
+- **TOTP generation**: Code generation with SHA-1/256/512, 6/8 digit codes, period boundaries
+- **Config**: Migration, type validation, password metadata preservation
+- **Audit trail**: Hash chain verification, truncation at 1000 entries
+- **Property-based tests**: Proptest roundtrip tests for encrypt/decrypt, URI parsing
+- **Cache**: mtime staleness detection, invalidation, cache hit/miss paths
+
+### Frontend Tests (Vitest)
+
+```bash
+# Run all frontend tests
+npx vitest run
+
+# Run in watch mode
+npx vitest
+```
+
+The frontend has **104 tests** across 7 test files:
+
+- `accounts.test.js` — account CRUD, search, HTML escaping
+- `clipboard.test.js` — auto-clear, timeout edge cases
+- `dragdrop.test.js` — drag-and-drop reorder logic
+- `lock.test.js` — lock screen, PIN entry, error handling
+- `main.test.js` — initialization, IPC calls, window management
+- `settings.test.js` — settings dialog, per-field debounce
+- `totp.test.js` — code display, countdown timer, refresh
 
 ### Adding Tests
 
 - Every new function added to `commands/` should have unit tests in the same file (`#[cfg(test)] mod tests { ... }`).
-- Every new module should have at least a basic smoke test.
+- Use shared test helpers from `test_utils.rs` (`test_app_state()`, `cleanup_auth_file()`, `with_fs_lock()`).
 - For cryptographic changes, include roundtrip property tests where practical.
-- Test file I/O by writing to temporary directories (`tempfile` or manual temp dirs).
-
-### Frontend Testing
-
-The frontend currently has no automated test framework. When adding JS logic:
-
-- Keep functions pure and side-effect-free where possible (DOM updates handled in `main.js`).
-- Manual test: verify the feature works end-to-end via `cargo tauri dev`.
+- Frontend tests use Vitest with mocked `@tauri-apps/api` — see existing test files for patterns.
 
 ### Fuzzing (Optional, Nightly Only)
 
@@ -301,10 +332,11 @@ cd src-tauri && cargo +nightly fuzz run parse_uri -- -runs=100000
 cd src-tauri
 cargo fmt --check          # Formatting
 cargo clippy -- -D warnings  # Linting (zero warnings)
-cargo test                   # Tests (all pass)
+$env:RUSTFLAGS="-C target-feature=+crt-static"; cargo test   # Rust tests (476+)
 cargo audit                  # Vulnerability scan
 cargo deny check             # License & duplicate check
-cd .. && npx eslint src/     # Frontend linting
+cd .. && npx vitest run      # Frontend tests (104)
+npx eslint src/              # Frontend linting
 ```
 
 5. **Write a clear commit message** following Conventional Commits (see above).
@@ -343,9 +375,10 @@ The project uses **GitHub Actions** (`.github/workflows/security.yml`) running o
 | `cargo audit`           | Known vulnerabilities in dependencies   |
 | `cargo deny check`      | License compliance, duplicate versions  |
 | `cargo clippy`          | Rust linting (deny warnings)            |
-| `cargo test`            | All unit and integration tests          |
+| `cargo test`            | All Rust unit and integration tests     |
 | `cargo fmt --check`     | Rust formatting                         |
 | `cargo build --release` | Full release build (ensures it compiles)|
+| `npx vitest run`        | Frontend tests (104 tests)              |
 
 **All CI checks must pass** before a PR can be merged.
 
