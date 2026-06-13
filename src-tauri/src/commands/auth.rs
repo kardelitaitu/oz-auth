@@ -1,4 +1,4 @@
-use crate::storage::{decrypt_accounts, encrypt_accounts, try_load};
+use crate::storage::{decrypt_accounts, encrypt_accounts};
 use crate::AppState;
 use tauri::State;
 use zeroize::{Zeroize, Zeroizing};
@@ -8,7 +8,7 @@ fn set_lock_impl(pin: &str, state: &AppState) -> Result<(), String> {
         return Err("PIN cannot be empty".to_string());
     }
 
-    let mut data = try_load()?;
+    let mut data = state.load_data()?;
     if data.config.password_protected {
         return Err("PIN is already set".to_string());
     }
@@ -27,6 +27,7 @@ fn set_lock_impl(pin: &str, state: &AppState) -> Result<(), String> {
     data.config.password_protected = true;
     data.config.password_salt = salt_hex;
     crate::storage::flush_and_save(&mut data)?;
+    state.invalidate_cache();
     state.set_key(key)?;
     // Zeroize derived key and account secrets
     key.zeroize();
@@ -47,7 +48,7 @@ pub fn set_lock(pin: String, state: State<'_, AppState>) -> Result<(), String> {
 }
 
 fn unlock_impl(pin: &str, state: &AppState) -> Result<bool, String> {
-    let data = try_load()?;
+    let data = state.load_data()?;
     if !data.config.password_protected {
         return Err("PIN is not set".to_string());
     }
@@ -108,7 +109,7 @@ pub fn lock(state: State<'_, AppState>) -> Result<(), String> {
 }
 
 fn is_locked_impl(state: &AppState) -> Result<bool, String> {
-    let data = try_load()?;
+    let data = state.load_data()?;
     if !data.config.password_protected {
         return Ok(false);
     }
@@ -126,7 +127,7 @@ fn change_pin_impl(old_pin: &str, new_pin: &str, state: &AppState) -> Result<(),
         return Err("new PIN cannot be empty".to_string());
     }
 
-    let mut data = try_load()?;
+    let mut data = state.load_data()?;
     if !data.config.password_protected {
         return Err("PIN is not set".to_string());
     }
@@ -152,6 +153,7 @@ fn change_pin_impl(old_pin: &str, new_pin: &str, state: &AppState) -> Result<(),
     data.accounts = encrypt_accounts(&accounts, &new_key)?;
     data.config.password_salt = new_salt_hex;
     crate::storage::flush_and_save(&mut data)?;
+    state.invalidate_cache();
 
     // Store the new key BEFORE zeroizing — set_key takes ownership
     state.set_key(new_key)?;
@@ -203,6 +205,7 @@ fn import_backup_impl(path: &str, state: &AppState) -> Result<(), String> {
 
     let dest = crate::paths::auth_path();
     std::fs::copy(path, &dest).map_err(|e| format!("failed to import backup: {e}"))?;
+    state.invalidate_cache();
     state.clear_key()?;
     crate::diagnostics::event("backup", &format!("imported from {path}"));
 
@@ -238,6 +241,7 @@ mod tests {
             encryption_key: std::sync::Mutex::new(None),
             failed_attempts: std::sync::Mutex::new(0),
             last_attempt: std::sync::Mutex::new(None),
+            cached_data: std::sync::Mutex::new(None),
         }
     }
 

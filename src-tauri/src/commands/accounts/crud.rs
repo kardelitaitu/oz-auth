@@ -19,7 +19,7 @@ fn add_account_impl(
     period: Option<u32>,
     state: &AppState,
 ) -> Result<Account, String> {
-    let mut data = try_load()?;
+    let mut data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;
@@ -50,6 +50,7 @@ fn add_account_impl(
     save_accounts(&mut data, &accounts, key)?;
     data.log = crate::diagnostics::flush_to_log_str();
     save(&data)?;
+    state.invalidate_cache();
 
     // Zeroize decrypted accounts — they've been re-encrypted
     zeroize_accounts(&mut accounts);
@@ -87,7 +88,7 @@ fn add_account_from_uri_impl(otpauth_uri: &str, state: &AppState) -> Result<Acco
     // Validate secret length early — before any disk I/O
     validate_secret_length(&parsed.secret)?;
 
-    let mut data = try_load()?;
+    let mut data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;
@@ -112,6 +113,7 @@ fn add_account_from_uri_impl(otpauth_uri: &str, state: &AppState) -> Result<Acco
     save_accounts(&mut data, &accounts, key)?;
     data.log = crate::diagnostics::flush_to_log_str();
     save(&data)?;
+    state.invalidate_cache();
 
     zeroize_accounts(&mut accounts);
     crate::diagnostics::event("account", &format!("added from URI {}", result.id));
@@ -130,7 +132,7 @@ pub fn add_account_from_uri(
 // ── remove_account ───────────────────────────────────────────
 
 fn remove_account_impl(account_id: &str, state: &AppState) -> Result<(), String> {
-    let mut data = try_load()?;
+    let mut data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;
@@ -144,6 +146,7 @@ fn remove_account_impl(account_id: &str, state: &AppState) -> Result<(), String>
     save_accounts(&mut data, &accounts, key)?;
     data.log = crate::diagnostics::flush_to_log_str();
     save(&data)?;
+    state.invalidate_cache();
 
     zeroize_accounts(&mut accounts);
     crate::diagnostics::event("account", &format!("removed {account_id}"));
@@ -165,7 +168,7 @@ fn update_account_impl(
     sort_order: Option<u32>,
     state: &AppState,
 ) -> Result<Account, String> {
-    let mut data = try_load()?;
+    let mut data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;
@@ -191,6 +194,7 @@ fn update_account_impl(
     save_accounts(&mut data, &accounts, key)?;
     data.log = crate::diagnostics::flush_to_log_str();
     save(&data)?;
+    state.invalidate_cache();
 
     zeroize_accounts(&mut accounts);
     crate::diagnostics::event("account", &format!("updated {account_id}"));
@@ -221,7 +225,7 @@ fn list_accounts_impl(
     search_query: Option<&str>,
     state: &AppState,
 ) -> Result<Vec<AccountSummary>, String> {
-    let data = try_load()?;
+    let data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;

@@ -34,7 +34,7 @@ use crate::models::account::Account;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AuthData {
     /// File format version. Defaults to 0 when missing (triggers upgrade to CURRENT_VERSION).
     #[serde(default = "default_version")]
@@ -1293,9 +1293,18 @@ mod tests {
         data.accounts.data_json = "".into();
         let changed = reconcile_invariants(&mut data);
         assert!(changed, "must trigger change");
-        assert!(data.config.password_protected, "must set password_protected=true");
-        assert_eq!(data.config.password_salt, "aabbccdd", "salt preserved for encrypted accounts");
-        assert_eq!(data.accounts.data_json, "", "data_json untouched when encrypted");
+        assert!(
+            data.config.password_protected,
+            "must set password_protected=true"
+        );
+        assert_eq!(
+            data.config.password_salt, "aabbccdd",
+            "salt preserved for encrypted accounts"
+        );
+        assert_eq!(
+            data.accounts.data_json, "",
+            "data_json untouched when encrypted"
+        );
     }
 
     #[test]

@@ -19,6 +19,9 @@ macro_rules! mock_app {
         tauri::test::mock_builder()
             .manage(crate::AppState {
                 encryption_key: std::sync::Mutex::new(None),
+                failed_attempts: std::sync::Mutex::new(0),
+                last_attempt: std::sync::Mutex::new(None),
+                cached_data: std::sync::Mutex::new(None),
             })
             .invoke_handler(tauri::generate_handler![
                 crate::commands::auth::lock,

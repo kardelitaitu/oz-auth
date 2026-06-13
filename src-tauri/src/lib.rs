@@ -31,6 +31,9 @@ pub(crate) struct AppState {
     failed_attempts: Mutex<u32>,
     /// Instant of the most recent failed unlock attempt.
     last_attempt: Mutex<Option<Instant>>,
+    /// Cached AuthData — avoids re-reading + re-parsing .auth file on every IPC call.
+    /// Stores (data, file_modification_time) for staleness detection.
+    cached_data: Mutex<Option<(crate::storage::AuthData, Option<std::time::SystemTime>)>>,
 }
 
 impl AppState {
@@ -131,6 +134,52 @@ impl AppState {
         }
         Ok(())
     }
+
+    /// Load AuthData from cache if valid, otherwise read from disk.
+    /// Cache is invalidated on every save (via `invalidate_cache`).
+    pub(crate) fn load_data(&self) -> Result<crate::storage::AuthData, String> {
+        let cache = self
+            .cached_data
+            .lock()
+            .map_err(|e| format!("lock error: {e}"))?;
+        if let Some((ref data, cached_at)) = *cache {
+            // Check if file has been modified externally (import_backup, etc.)
+            if let Ok(modified) =
+                std::fs::metadata(crate::paths::auth_path()).and_then(|m| m.modified())
+            {
+                if let Some(ct) = cached_at {
+                    if modified > ct {
+                        drop(cache);
+                        return self.reload_from_disk();
+                    }
+                }
+            }
+            return Ok(data.clone());
+        }
+        drop(cache);
+        self.reload_from_disk()
+    }
+
+    /// Read from disk, populate cache, return data.
+    fn reload_from_disk(&self) -> Result<crate::storage::AuthData, String> {
+        let data = crate::storage::try_load()?;
+        let mtime = std::fs::metadata(crate::paths::auth_path())
+            .ok()
+            .and_then(|m| m.modified().ok());
+        let mut cache = self
+            .cached_data
+            .lock()
+            .map_err(|e| format!("lock error: {e}"))?;
+        *cache = Some((data.clone(), mtime));
+        Ok(data)
+    }
+
+    /// Invalidate the cache — must be called after every save to disk.
+    pub(crate) fn invalidate_cache(&self) {
+        if let Ok(mut cache) = self.cached_data.lock() {
+            *cache = None;
+        }
+    }
 }
 
 /// Windows API: prevent memory from being paged to swap.
@@ -215,6 +264,7 @@ pub fn run() {
             encryption_key: Mutex::new(None),
             failed_attempts: Mutex::new(0),
             last_attempt: Mutex::new(None),
+            cached_data: Mutex::new(None),
         })
         .manage(tray::TrayState::<tauri::Wry>::new())
         .setup(|app| {
@@ -287,6 +337,15 @@ mod tests {
             .lock()
             .unwrap_or_else(|e| e.into_inner());
         f();
+    }
+
+    fn test_app_state() -> AppState {
+        AppState {
+            encryption_key: Mutex::new(None),
+            failed_attempts: Mutex::new(0),
+            last_attempt: Mutex::new(None),
+            cached_data: Mutex::new(None),
+        }
     }
 
     #[test]
@@ -434,6 +493,109 @@ mod tests {
             assert_eq!(loaded.config.theme, "light");
             assert_eq!(loaded.config.width, 500);
             assert!(!loaded.config.password_protected);
+            cleanup_auth_file();
+        });
+    }
+
+    // ── Cache tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_load_data_returns_same_data_on_second_call() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // Seed an auth file
+            let mut data = crate::storage::try_load().unwrap();
+            data.config.theme = "dark".into();
+            crate::storage::save(&data).unwrap();
+
+            // First load — reads from disk
+            let loaded1 = state.load_data().unwrap();
+            assert_eq!(loaded1.config.theme, "dark");
+
+            // Second load — should return cached data
+            let loaded2 = state.load_data().unwrap();
+            assert_eq!(loaded2.config.theme, "dark");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_invalidate_cache_forces_reload() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // Seed an auth file
+            let mut data = crate::storage::try_load().unwrap();
+            data.config.theme = "dark".into();
+            crate::storage::save(&data).unwrap();
+
+            // Load (populates cache)
+            let loaded = state.load_data().unwrap();
+            assert_eq!(loaded.config.theme, "dark");
+
+            // Modify the file directly (simulates external change)
+            let mut data2 = crate::storage::try_load().unwrap();
+            data2.config.theme = "light".into();
+            crate::storage::save(&data2).unwrap();
+
+            // Without invalidation, cache returns stale data
+            let cached = state.load_data().unwrap();
+            // (might return stale "dark" if mtime hasn't changed yet)
+
+            // After invalidation, must return fresh data
+            state.invalidate_cache();
+            let fresh = state.load_data().unwrap();
+            assert_eq!(fresh.config.theme, "light", "must reload after invalidate");
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_load_data_populates_cache() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // No auth file yet — fresh() should be returned
+            let loaded = state.load_data().unwrap();
+            assert!(!loaded.config.password_protected);
+
+            // Verify cache is populated
+            let cache = state.cached_data.lock().unwrap();
+            assert!(cache.is_some(), "cache should be populated after load_data");
+            drop(cache);
+            cleanup_auth_file();
+        });
+    }
+
+    #[test]
+    fn test_cache_detects_external_file_modification() {
+        with_fs_lock(|| {
+            cleanup_auth_file();
+            let state = test_app_state();
+            // Seed an auth file
+            let mut data = crate::storage::try_load().unwrap();
+            data.config.theme = "dark".into();
+            crate::storage::save(&data).unwrap();
+
+            // Load (populates cache with mtime)
+            let loaded = state.load_data().unwrap();
+            assert_eq!(loaded.config.theme, "dark");
+
+            // Small delay to ensure mtime changes on Windows (1s resolution)
+            std::thread::sleep(std::time::Duration::from_millis(1100));
+
+            // Modify the file directly (different mtime)
+            let mut data2 = crate::storage::try_load().unwrap();
+            data2.config.theme = "light".into();
+            crate::storage::save(&data2).unwrap();
+
+            // load_data should detect the mtime change and reload
+            let fresh = state.load_data().unwrap();
+            assert_eq!(
+                fresh.config.theme, "light",
+                "must detect external modification"
+            );
             cleanup_auth_file();
         });
     }

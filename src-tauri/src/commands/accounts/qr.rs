@@ -30,7 +30,7 @@ fn urlencoding(s: &str) -> String {
 // ── get_otpauth_uri ─────────────────────────────────────────
 
 fn get_otpauth_uri_impl(account_id: &str, state: &AppState) -> Result<String, String> {
-    let data = try_load()?;
+    let data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;
@@ -66,7 +66,7 @@ pub fn get_otpauth_uri(account_id: String, state: State<'_, AppState>) -> Result
 // ── get_backup_uris ─────────────────────────────────────────
 
 fn get_backup_uris_impl(state: &AppState) -> Result<Vec<String>, String> {
-    let data = try_load()?;
+    let data = state.load_data()?;
     let key_wrapper = state.get_key()?;
     let key: Option<[u8; 32]> = key_wrapper.as_ref().map(|z| **z);
     let mut accounts = load_accounts(&data, key)?;

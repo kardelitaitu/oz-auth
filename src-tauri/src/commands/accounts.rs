@@ -9,7 +9,7 @@ pub mod qr;
 
 // ── Shared dependencies ──────────────────────────────────────
 use crate::models::account::{Account, Algorithm};
-use crate::storage::{encrypt_accounts, load_accounts, save, try_load, AuthData};
+use crate::storage::{encrypt_accounts, load_accounts, save, AuthData};
 use crate::AppState;
 use base32::Alphabet;
 use zeroize::Zeroize;
@@ -82,6 +82,7 @@ fn test_app_state() -> AppState {
         encryption_key: std::sync::Mutex::new(None),
         failed_attempts: std::sync::Mutex::new(0),
         last_attempt: std::sync::Mutex::new(None),
+        cached_data: std::sync::Mutex::new(None),
     }
 }
 
