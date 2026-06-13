@@ -47,6 +47,9 @@ pub struct AuthData {
     /// Optional user notes about this auth file. Added in v2.
     #[serde(default)]
     pub notes: String,
+    /// Append-only signed audit trail (JSON array of AuditEntry). Added in v3.
+    #[serde(default)]
+    pub audit_trail: String,
 }
 
 fn default_version() -> u32 {
@@ -113,6 +116,17 @@ pub fn try_load() -> Result<AuthData, String> {
     }
 
     Ok(data)
+}
+
+/// Flush both the human-readable event log and the signed audit trail
+/// into the AuthData struct, then save to disk.
+pub fn flush_and_save(data: &mut AuthData) -> Result<(), String> {
+    data.log = crate::diagnostics::flush_to_log_str();
+    data.audit_trail = crate::audit::flush();
+    let json = serde_json::to_string_pretty(data)
+        .map_err(|e| format!("failed to serialize auth data: {e}"))?;
+    std::fs::write(auth_path(), &json)
+        .map_err(|e| format!("failed to write {}: {e}", auth_path().display()))
 }
 
 pub fn save(data: &AuthData) -> Result<(), String> {
@@ -230,6 +244,7 @@ fn fresh() -> AuthData {
         },
         log: String::new(),
         notes: String::new(),
+        audit_trail: String::new(),
     }
 }
 
@@ -395,6 +410,7 @@ mod tests {
             accounts: payload,
             log: String::new(),
             notes: String::new(),
+            audit_trail: String::new(),
         };
         assert!(load_accounts(&data, None).is_err());
     }
@@ -412,6 +428,7 @@ mod tests {
             },
             log: String::new(),
             notes: String::new(),
+            audit_trail: String::new(),
         };
         let mut accounts = load_accounts(&data, None).unwrap();
         assert_eq!(accounts.len(), 1);
@@ -707,6 +724,7 @@ mod tests {
             accounts: payload,
             log: String::new(),
             notes: String::new(),
+            audit_trail: String::new(),
         };
         let result = load_accounts(&data, Some(wrong_key));
         assert!(result.is_err(), "wrong key must fail decryption");
@@ -891,6 +909,7 @@ mod tests {
             },
             log: String::new(),
             notes: String::new(),
+            audit_trail: String::new(),
         };
         let json = serde_json::to_string_pretty(&data).unwrap();
         let fixture = include_str!("../../tests/fixtures/auth_data_v1_snapshot.json");

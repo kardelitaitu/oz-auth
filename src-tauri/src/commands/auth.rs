@@ -1,4 +1,4 @@
-use crate::storage::{decrypt_accounts, encrypt_accounts, save, try_load};
+use crate::storage::{decrypt_accounts, encrypt_accounts, try_load};
 use crate::AppState;
 use tauri::State;
 use zeroize::{Zeroize, Zeroizing};
@@ -25,8 +25,7 @@ fn set_lock_impl(pin: &str, state: &AppState) -> Result<(), String> {
     data.accounts = encrypt_accounts(&accounts, &key)?;
     data.config.password_protected = true;
     data.config.password_salt = salt_hex;
-    data.log = crate::diagnostics::flush_to_log_str();
-    save(&data)?;
+    crate::storage::flush_and_save(&mut data)?;
     state.set_key(key)?;
     // Zeroize derived key and account secrets
     key.zeroize();
@@ -151,8 +150,7 @@ fn change_pin_impl(old_pin: &str, new_pin: &str, state: &AppState) -> Result<(),
     let mut new_key = crate::crypto::derive_key(new_pin, &*new_salt)?;
     data.accounts = encrypt_accounts(&accounts, &new_key)?;
     data.config.password_salt = new_salt_hex;
-    data.log = crate::diagnostics::flush_to_log_str();
-    save(&data)?;
+    crate::storage::flush_and_save(&mut data)?;
 
     // Zeroize the old key, account secrets, and new key after use
     old_key.zeroize();

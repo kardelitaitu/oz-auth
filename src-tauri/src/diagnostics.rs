@@ -32,13 +32,15 @@ pub fn init() {
     event("startup", "Application started");
 }
 
-/// Append a major event to the in-memory log buffer.
+/// Append a major event to the in-memory log buffer and audit trail.
 pub fn event(category: &str, message: &str) {
     let line = format!("[{}] {}: {}\n", timestamp(), category, message);
     if let Ok(mut guard) = LOG_BUF.lock() {
         let buf = guard.get_or_insert_with(String::new);
         buf.push_str(&line);
     }
+    // Also push to the signed audit trail
+    crate::audit::push(category, message);
 }
 
 /// Flush the in-memory log to a string for persisting (capped at ~10 KB).

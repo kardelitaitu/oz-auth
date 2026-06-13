@@ -1,5 +1,6 @@
 #![allow(private_interfaces)]
 
+pub mod audit;
 pub mod commands;
 pub mod config;
 pub mod crypto;
@@ -173,8 +174,7 @@ fn save_config(cfg: crate::config::Config) -> Result<(), String> {
     merged.password_salt = data.config.password_salt.clone();
 
     data.config = merged;
-    data.log = crate::diagnostics::flush_to_log_str();
-    crate::storage::save(&data)
+    crate::storage::flush_and_save(&mut data)
 }
 
 // ── App entry ────────────────────────────────────────────────
@@ -187,6 +187,7 @@ pub fn run() {
     if crate::storage::exists() {
         let data = crate::storage::load();
         crate::diagnostics::restore_from_log_str(&data.log);
+        crate::audit::restore(&data.audit_trail);
     }
 
     tauri::Builder::default()
