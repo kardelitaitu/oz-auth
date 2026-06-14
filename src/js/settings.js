@@ -351,8 +351,7 @@ export function openSettings(config) {
       onClipboardClearSecondsChanged,
       onLockTimeoutChanged,
       onFocusLossChanged,
-    });
-  }).catch((e) => {
+    });    }).catch(() => {
     toast("Failed to load settings", true);
   });
 }
@@ -570,7 +569,7 @@ function wireEventListeners({
         cfg[field] = value;
         await invoke("save_config", { cfg });
         if (callback) callback(value);
-      } catch (e) {
+      } catch {
         // silently ignore — user may still be typing
       }
     }, 400);

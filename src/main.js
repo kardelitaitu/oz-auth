@@ -75,7 +75,7 @@ function saveConfigBatch() {
     pendingConfig = null;
     try {
       await invoke("save_config", { cfg });
-    } catch (_) {}
+    } catch { /* noop */ }
   }, 300);
 }
 
@@ -138,7 +138,7 @@ async function deleteAccount(id) {
     hideContextMenu();
     await loadAccounts();
     refreshCodes(invoke, lock.getLocked(), secondsRemaining, () => updateBars(accounts, secondsRemaining), toast);
-  } catch (e) {
+  } catch {
     toast("Delete failed", true);
   }
 }
@@ -270,7 +270,7 @@ async function onReorder(srcId, targetId) {
   try {
     await Promise.all(updates);
     toast("Reordered");
-  } catch (e) {
+  } catch {
     toast("Reorder failed — reloading", true);
     await loadAccounts();
     refreshCodes(invoke, lock.getLocked(), secondsRemaining, () => updateBars(accounts, secondsRemaining), toast);
@@ -329,7 +329,7 @@ function startAutoLock() {
         lock.setLocked(true);
         stopCountdown();
         lock.show();
-      } catch (_) {}
+      } catch { /* noop */ }
     }
   }, 15000);
 }
@@ -386,7 +386,7 @@ btnSettings.addEventListener("click", () => {
         lock.setLocked(true);
         stopCountdown();
         lock.show();
-      } catch (e) {
+      } catch {
         toast("Lock failed", true);
       }
     },
@@ -506,7 +506,7 @@ document.addEventListener("keydown", async (e) => {
         lock.setLocked(true);
         stopCountdown();
         lock.show();
-      } catch (_) {}
+      } catch { /* noop */ }
     }
   }
 });
@@ -521,7 +521,7 @@ document.addEventListener("keydown", async (e) => {
 
     try {
       appVersion = await invoke("get_app_version");
-    } catch (_) {
+    } catch {
       appVersion = "0.1.0";
     }
 
@@ -551,7 +551,7 @@ document.addEventListener("keydown", async (e) => {
           await invoke("save_config", { cfg: pendingConfig });
           pendingConfig = null;
         }
-      } catch (_) {}
+      } catch { /* noop */ }
     });
 
     await trackWindow();
@@ -566,7 +566,7 @@ document.addEventListener("keydown", async (e) => {
           lock.setLocked(true);
           stopCountdown();
           lock.show();
-        } catch (_) {}
+        } catch { /* noop */ }
       }
     });
   } catch (e) {

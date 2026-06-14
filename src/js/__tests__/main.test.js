@@ -131,7 +131,7 @@ function createFullDom() {
 /** Track invoke calls for assertions. */
 let callLog = {};
 
-function defaultInvokeMock(cmd, args) {
+function defaultInvokeMock(cmd) {
   switch (cmd) {
     case "get_app_name":
       return "TestApp";

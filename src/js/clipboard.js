@@ -4,7 +4,7 @@
 function randomClearString() {
   try {
     return crypto.randomUUID() + crypto.randomUUID();
-  } catch (_) {
+  } catch {
     // Fallback if crypto.randomUUID is unavailable
     return Math.random().toString(36).repeat(8);
   }
@@ -35,12 +35,12 @@ export function createClipboardManager(toastFn, clearSeconds = 30, invokeFn) {
           try {
             await clearClipboard();
             toastFn("Clipboard cleared");
-          } catch (_) {}
+          } catch { /* noop */ }
         }, timeout * 1000);
       } else {
         toastFn("Code copied");
       }
-    } catch (e) {
+    } catch {
       toastFn("Copy failed", true);
     }
   }
@@ -65,7 +65,7 @@ export function createClipboardManager(toastFn, clearSeconds = 30, invokeFn) {
     try {
       await clearClipboard();
       toastFn("Clipboard cleared");
-    } catch (_) {}
+    } catch { /* noop */ }
   }
 
   return { copy: copyCode, clear: clearTimer, setClearSeconds, clearOnLock };

@@ -7,7 +7,7 @@
  * Used directly in test files as a fallback inside mockImplementation.
  * Override specific commands by passing overrides to your createConfig function.
  */
-export function defaultMockHandler(cmd, args) {
+export function defaultMockHandler(cmd) {
   switch (cmd) {
     case "list_accounts":
       return [];
