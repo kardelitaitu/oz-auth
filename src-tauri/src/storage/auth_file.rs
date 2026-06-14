@@ -34,6 +34,10 @@ use crate::models::account::Account;
 use serde::{Deserialize, Serialize};
 use zeroize::Zeroize;
 
+use std::fs::File;
+use std::io::Read;
+use std::path::Path;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct AuthData {
     /// File format version. Defaults to 0 when missing (triggers upgrade to CURRENT_VERSION).
@@ -96,18 +100,20 @@ pub fn load() -> AuthData {
     try_load().unwrap_or_else(|_| fresh())
 }
 
-fn default_auth_path() -> std::path::PathBuf {
-    crate::paths::auth_path().unwrap_or_else(|_| std::path::PathBuf::from("default.auth"))
-}
-
 pub fn try_load() -> Result<AuthData, String> {
     let path = auth_path()?;
     if !path.exists() {
         return Ok(fresh());
     }
 
-    let raw = std::fs::read_to_string(&path)
-        .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+    // Acquire shared lock while reading to prevent concurrent writes
+    let raw = with_shared_lock(&path, |file| {
+        let mut buf = String::new();
+        file.read_to_string(&mut buf)
+            .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
+        Ok(buf)
+    })?;
+
     let mut data: AuthData = serde_json::from_str(&raw)
         .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
 
@@ -138,23 +144,59 @@ pub fn save(data: &AuthData) -> Result<(), String> {
     atomic_write(&auth_path()?, &json)
 }
 
+/// Open the .auth file, acquire an advisory exclusive lock, then call `f`.
+/// The lock is released when the returned file handle is dropped.
+fn with_exclusive_lock<T>(path: &Path, f: impl FnOnce(&mut File) -> Result<T, String>) -> Result<T, String> {
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false) // don't truncate — the temp-file rename replaces the content atomically
+        .open(path)
+        .map_err(|e| format!("failed to open {} for locking: {e}", path.display()))?;
+    fs2::FileExt::lock_exclusive(&file)
+        .map_err(|e| format!("failed to lock {} exclusively: {e}", path.display()))?;
+    let result = f(&mut file)?;
+    // File drops here → lock released
+    Ok(result)
+}
+
+/// Open the .auth file, acquire an advisory shared lock, then call `f`.
+/// The lock is released when the returned file handle is dropped.
+fn with_shared_lock<T>(path: &Path, f: impl FnOnce(&mut File) -> Result<T, String>) -> Result<T, String> {
+    let mut file = std::fs::OpenOptions::new()
+        .read(true)
+        .open(path)
+        .map_err(|e| format!("failed to open {} for locking: {e}", path.display()))?;
+    fs2::FileExt::lock_shared(&file)
+        .map_err(|e| format!("failed to lock {} shared: {e}", path.display()))?;
+    let result = f(&mut file)?;
+    // File drops here → lock released
+    Ok(result)
+}
+
 /// Atomic write: write to a temp file, then rename over the target.
 /// Uses a random suffix to avoid collisions from concurrent writers.
-fn atomic_write(target: &std::path::Path, contents: &str) -> Result<(), String> {
+/// Acquires an advisory exclusive lock on the target before writing.
+fn atomic_write(target: &Path, contents: &str) -> Result<(), String> {
     let dir = target.parent().unwrap_or_else(|| std::path::Path::new("."));
     let tmp_name = format!(".auth.{:016x}.tmp", rand::random::<u64>());
     let tmp = dir.join(tmp_name);
 
-    std::fs::write(&tmp, contents)
-        .map_err(|e| format!("failed to write temp file {}: {e}", tmp.display()))?;
+    let result = with_exclusive_lock(target, |_file| {
+        std::fs::write(&tmp, contents)
+            .map_err(|e| format!("failed to write temp file {}: {e}", tmp.display()))?;
 
-    // Atomic rename — on Windows this is atomic if src and dest are on the same volume
-    std::fs::rename(&tmp, target).map_err(|e| {
-        let _ = std::fs::remove_file(&tmp);
-        format!("failed to rename temp file to {}: {e}", target.display())
-    })?;
+        // Atomic rename — on Windows this is atomic if src and dest are on the same volume
+        std::fs::rename(&tmp, target).map_err(|e| {
+            let _ = std::fs::remove_file(&tmp);
+            format!("failed to rename temp file to {}: {e}", target.display())
+        })?;
 
-    Ok(())
+        Ok(())
+    });
+
+    result
 }
 
 pub fn encrypt_accounts(accounts: &[Account], key: &[u8; 32]) -> Result<AccountsPayload, String> {

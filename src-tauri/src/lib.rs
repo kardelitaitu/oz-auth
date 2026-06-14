@@ -276,11 +276,12 @@ pub fn run() {
     crate::diagnostics::init();
     let _ = crate::paths::verify();
 
-    if crate::storage::exists() {
-        let data = crate::storage::load();
-        crate::diagnostics::restore_from_log_str(&data.log);
-        crate::audit::restore(&data.audit_trail);
-    }
+    // Single load of .auth file at startup — avoids reading + parsing twice
+    let data = crate::storage::load();
+    crate::diagnostics::restore_from_log_str(&data.log);
+    crate::audit::restore(&data.audit_trail);
+    let cfg = data.config;
+    let exists = crate::storage::exists();
 
     // Push startup AFTER restore so the event survives in the audit trail
     // (diagnostics::init() only sets up the panic hook — the event is pushed here)
@@ -294,14 +295,12 @@ pub fn run() {
             cached_data: Mutex::new(None),
         })
         .manage(tray::TrayState::<tauri::Wry>::new())
-        .setup(|app| {
-            let data = crate::storage::load();
-            let cfg = data.config;
+        .setup(move |app| {
             let exe_name = crate::paths::exe_stem()
                 .unwrap_or_else(|_| "tauri-authenticator".to_string());
 
             if let Some(window) = app.get_webview_window("main") {
-                if crate::storage::exists() {
+                if exists {
                     let _ = window.set_position(tauri::PhysicalPosition::new(cfg.left, cfg.top));
                     let _ = window.set_size(tauri::PhysicalSize::new(cfg.width, cfg.height));
                 } else {

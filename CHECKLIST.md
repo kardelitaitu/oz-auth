@@ -27,7 +27,7 @@ Items from the working tree crypto+storage fixes ready to merge:
 
 - [x] **2b.1** Review config structure, defaults, and migration logic (`lock_timeout_minutes` → `lock_timeout_seconds`)
 - [x] **2b.2** Wrap `password_salt: String` → `Zeroizing<String>` (defense-in-depth, low priority)
-- [ ] **2b.3** Verify window state persistence works correctly
+- [x] **2b.3** Verify window state persistence works correctly
 
 ### 2c. Audit Trail — `audit.rs` ✓
 
@@ -88,48 +88,48 @@ Items from the working tree crypto+storage fixes ready to merge:
 
 ## Phase 6: Area #4 — Commands (accounts + totp) Review
 
-- [ ] **6.1** Review `commands/accounts.rs` — account management entry points
-- [ ] **6.2** Review `accounts/crud.rs` — CRUD operations, sort order, validation
-- [ ] **6.3** Review `accounts/qr.rs` — QR code scanning/parsing
-- [ ] **6.4** Review `commands/totp.rs` — TOTP code generation, period validation
+- [x] **6.1** Review `commands/accounts.rs` — account management entry points
+- [x] **6.2** Review `accounts/crud.rs` — CRUD operations, sort order, validation
+- [x] **6.3** Review `accounts/qr.rs` — QR code scanning/parsing
+- [x] **6.4** Review `commands/totp.rs` — TOTP code generation, period validation
 
 ---
 
 ## Phase 7: Area #5 — App Bootstrap Review
 
-- [ ] **7.1** Review `main.rs` — entry point, `windows_subsystem`, panic hook
-- [ ] **7.2** Review `lib.rs` — `AppState`, plugin registration, wiring
-- [ ] **7.3** Review `tray.rs` — system tray icon, menu, left-click toggle
-- [ ] **7.4** Review `diagnostics.rs` — crash logging, event log buffer
+- [x] **7.1** Review `main.rs` — entry point, `windows_subsystem`, panic hook
+- [x] **7.2** Review `lib.rs` — `AppState`, plugin registration, wiring
+- [x] **7.3** Review `tray.rs` — system tray icon, menu, left-click toggle
+- [x] **7.4** Review `diagnostics.rs` — crash logging, event log buffer
 
 ---
 
 ## Phase 8: Area #6 — Frontend Review
 
-- [ ] **8.1** Review `main.js` — Tauri event listeners, window tracking, init flow
-- [ ] **8.2** Review `totp.js` — code display, countdown timers
-- [ ] **8.3** Review `clipboard.js` — copy-to-clipboard with auto-clear
-- [ ] **8.4** Review `dragdrop.js` — drag-and-drop reordering
-- [ ] **8.5** Review `lock.js` — lock screen, PIN entry, unlock flow
+- [x] **8.1** Review `main.js` — Tauri event listeners, window tracking, init flow
+- [x] **8.2** Review `totp.js` — code display, countdown timers
+- [x] **8.3** Review `clipboard.js` — copy-to-clipboard with auto-clear
+- [x] **8.4** Review `dragdrop.js` — drag-and-drop reordering
+- [x] **8.5** Review `lock.js` — lock screen, PIN entry, unlock flow
 
 ---
 
-## Phase 9: Area #7 — Configuration + CI Review
+## Phase 9: Area #7 — Configuration + CI Review ✓
 
-- [ ] **9.1** Review `tauri.conf.json` — window config, security headers
-- [ ] **9.2** Review `Cargo.toml` — dependency audit, feature flags
-- [ ] **9.3** Review `capabilities/default.json` — IPC permissions
-- [ ] **9.4** Review CI workflows — build, test, security audit
+- [x] **9.1** Review `tauri.conf.json` — window config, security headers
+- [x] **9.2** Review `Cargo.toml` — dependency audit, feature flags
+- [x] **9.3** Review `capabilities/default.json` — IPC permissions
+- [x] **9.4** Review CI workflows — build, test, security audit
 
 ---
 
-## Phase 10: Remaining Items
+## Phase 10: Remaining Items ✓
 
-- [ ] **10.1** File locking on `.auth` — advisory file lock during read/write to prevent TOCTOU races
-- [ ] **10.2** Version sync (M-13) — sync version across Cargo.toml, package.json, and about dialog
-- [ ] **10.3** Windows CI (M-15) — set up Windows CI runner
-- [ ] **10.4** Update `SECURITY.md` — mark completed items, add new findings
-- [ ] **10.5** Prepare v0.1.6 release — changelog, tag, build
+- [x] **10.1** File locking on `.auth` — advisory file lock during read/write to prevent TOCTOU races
+- [x] **10.2** Version sync (M-13) — sync version across Cargo.toml, package.json, and about dialog
+- [x] **10.3** Windows CI (M-15) — set up Windows CI runner
+- [x] **10.4** Update `SECURITY.md` — mark completed items, add new findings
+- [x] **10.5** Prepare v0.1.6 release — changelog, branch, push
 
 ---
 

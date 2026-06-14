@@ -4,7 +4,7 @@
 
 | Version | Supported |
 |---------|-----------|
-| 0.1.4   | ✅ Current release |
+| 0.1.6   | ✅ Current release |
 | 0.1.x   | ✅ Active development — security fixes land in `main` |
 
 ---
@@ -104,9 +104,9 @@ oz-auth is a **offline-first, memory-hardened** TOTP authenticator designed to p
 
 ### What the Rust Backend Does NOT Yet Control
 
-- **IPC input length validation** — No max-length checks on string parameters (PIN, issuer, label, secret, URI, path). Tauri's IPC has implicit limits, but the Rust side should enforce explicit bounds.
-- **PIN strength enforcement** — No minimum length or complexity requirement beyond non-empty.
-- **File locking** — No advisory locking on `.auth` file reads/writes (TOCTOU risk with concurrent access).
+- **PIN strength enforcement** — No minimum length or complexity requirement beyond non-empty. Strength indicator is informational only.
+- **File locking** — ✅ Advisory exclusive lock on `.auth` file writes (v0.1.6). Shared lock on reads. Prevents TOCTOU races between concurrent instances.
+- **Windows CI** — ✅ Windows CI runner added (v0.1.6).
 
 ### What the WebView Controls
 
@@ -128,13 +128,17 @@ oz-auth is a **offline-first, memory-hardened** TOTP authenticator designed to p
 
 | Priority | Item | Status | Description |
 |----------|------|--------|-------------|
-| High | IPC input length validation | Planned | Add max-length checks on all string IPC inputs (PIN, issuer, label, secret, URI, path) to prevent memory exhaustion DoS. |
-| High | `derive_key()` return type | Planned | Change return type from `[u8; 32]` to `Zeroizing<[u8; 32]>` to prevent accidental key copies on the stack. |
-| Medium | `Account.secret` Zeroizing | Planned | Change `secret: Vec<u8>` to `secret: Zeroizing<Vec<u8>>` for automatic zeroization. |
-| Medium | `paths.rs` error handling | Planned | Convert 4 `.expect()` calls to `Result` returns to prevent panics on exe path resolution failure. |
-| Medium | PIN strength guidance | Planned | Add optional PIN complexity check (min 6 digits, reject common PINs) with user override. |
+| ✅ Complete | IPC input length validation | Complete | Max-length checks on all string IPC inputs implemented in Phase 3a (v0.1.6). |
+| ✅ Complete | `derive_key()` return type | Complete | Returns `Zeroizing<[u8; 32]>` (Phase 2a, v0.1.6). |
+| ✅ Complete | `Account.secret` Zeroizing | Complete | `secret: Zeroizing<Vec<u8>>` for automatic zeroization (Phase 2a, v0.1.6). |
+| ✅ Complete | `paths.rs` error handling | Complete | 4 `.expect()` calls converted to `Result` returns (Phase 3b, v0.1.6). |
+| ✅ Complete | Frontend innerHTML → DOM APIs | Complete | `settings.js` and `accounts.js` refactored to pure DOM APIs (Phases 4a-4b, v0.1.6). |
+| ✅ Complete | Startup double-read optimization | Complete | `.auth` file loaded once instead of twice on startup (Phase 7, v0.1.6). |
+| ✅ Complete | CSS theme variable dedup | Complete | Dark theme variables removed from `main.css` — single source of truth in `themes.css` (Phase 10, v0.1.6). |
+| ✅ Complete | File locking on .auth | Complete | Advisory exclusive lock on writes using `fs2`, shared lock on reads (Phase 10, v0.1.6). |
+| Medium | PIN strength guidance | Planned | Add optional PIN complexity check (min 6 digits, reject common PINs) with user override. Strength indicator added in Phase 3c (informational). |
 | Low | `Config.password_salt` Zeroizing | Planned | Wrap salt in `Zeroizing<String>` for defense-in-depth (salt is not secret, but zeroizing reduces exposure window). |
-| Low | File locking on .auth | Planned | Use advisory file locking during read/write to prevent TOCTOU race conditions between concurrent access. |
+| Future | Windows CI | Complete | Windows CI runner added (Phase 10, v0.1.6). |
 | Future | TPM-backed keystore | Backlog | Use Windows DPAPI or TPM to protect the encryption key, eliminating cold-boot attack vector. |
 | Future | Encrypted backup format | Backlog | Export/import with user-supplied passphrase (separate from PIN) for secure backup transfer. |
 | Future | `cargo-vet` integration | Backlog | Third-party dependency auditing beyond `cargo-audit`/`cargo-deny`. |
@@ -210,7 +214,7 @@ oz-auth uses `cargo-audit` and `cargo-deny` in CI to scan for known vulnerabilit
 
 ## Testing
 
-- **476 tests** across all Rust modules (unit + property-based) and JS frontend (Vitest)
+- **485 tests** across all Rust modules (unit + property-based) and JS frontend (104 Vitest tests)
 - Shared test infrastructure in `test_utils.rs` (test_app_state, cleanup_auth_file, with_fs_lock)
 - Proptest 1.11 compatibility (generic return types, `prop_assert!` Result handling)
 - Coverage: 100% on crypto, config, paths, otpauth, account models; 85-97% on commands; 55% on lib.rs (Tauri command wrappers require WebView2 for full coverage)
