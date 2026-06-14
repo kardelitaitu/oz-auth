@@ -102,17 +102,33 @@ pub fn load() -> AuthData {
 
 pub fn try_load() -> Result<AuthData, String> {
     let path = auth_path()?;
-    if !path.exists() {
-        return Ok(fresh());
-    }
 
-    // Acquire shared lock while reading to prevent concurrent writes
-    let raw = with_shared_lock(&path, |file| {
+    // Read file content in a scoped block so the shared lock is released
+    // BEFORE we potentially acquire an exclusive lock in flush_and_save.
+    // Without this scoping, the file handle (holding the shared lock) lives
+    // until the function returns, causing a self-deadlock on Windows where
+    // LockFileEx blocks when requesting an exclusive lock on a region already
+    // held by a shared lock from the same process.
+    let raw = {
+        // Open without checking path.exists() first — handle NotFound from the OS
+        let mut file = match std::fs::File::open(&path) {
+            Ok(f) => f,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(fresh()),
+            Err(e) => {
+                return Err(format!("failed to open {}: {e}", path.display()));
+            }
+        };
+
+        // Acquire shared lock while reading to prevent concurrent writes
+        fs2::FileExt::lock_shared(&file)
+            .map_err(|e| format!("failed to lock {}: {e}", path.display()))?;
+
         let mut buf = String::new();
         file.read_to_string(&mut buf)
             .map_err(|e| format!("failed to read {}: {e}", path.display()))?;
-        Ok(buf)
-    })?;
+        // file drops here → shared lock released
+        buf
+    };
 
     let mut data: AuthData = serde_json::from_str(&raw)
         .map_err(|e| format!("failed to parse {}: {e}", path.display()))?;
@@ -156,20 +172,6 @@ fn with_exclusive_lock<T>(path: &Path, f: impl FnOnce(&mut File) -> Result<T, St
         .map_err(|e| format!("failed to open {} for locking: {e}", path.display()))?;
     fs2::FileExt::lock_exclusive(&file)
         .map_err(|e| format!("failed to lock {} exclusively: {e}", path.display()))?;
-    let result = f(&mut file)?;
-    // File drops here → lock released
-    Ok(result)
-}
-
-/// Open the .auth file, acquire an advisory shared lock, then call `f`.
-/// The lock is released when the returned file handle is dropped.
-fn with_shared_lock<T>(path: &Path, f: impl FnOnce(&mut File) -> Result<T, String>) -> Result<T, String> {
-    let mut file = std::fs::OpenOptions::new()
-        .read(true)
-        .open(path)
-        .map_err(|e| format!("failed to open {} for locking: {e}", path.display()))?;
-    fs2::FileExt::lock_shared(&file)
-        .map_err(|e| format!("failed to lock {} shared: {e}", path.display()))?;
     let result = f(&mut file)?;
     // File drops here → lock released
     Ok(result)

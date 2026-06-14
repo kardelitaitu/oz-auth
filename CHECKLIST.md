@@ -9,7 +9,7 @@
 
 Items from the working tree crypto+storage fixes ready to merge:
 
-- [ ] **1.1** Push Area #1 fixes (crypto.rs, auth_file.rs, auth.rs, crud.rs) to `main`
+- [x] **1.1** Push v0.1.6 branch with all Phase 2-10 changes to `origin` (commit `11024ec`)
 - [ ] **1.2** Verify all 584 tests pass on CI after merge
 
 ---
